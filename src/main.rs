@@ -80,7 +80,7 @@ impl Commander<BinInfoResult> for BinInfo {
         // Write it back to a buffer
         let buffer = &mut [0; 64];
 
-        let bytes = buffer.pwrite_with(command, 1, LE)?;
+        let bytes = buffer.pwrite_with(&command, 1, LE)?;
 
         buffer[0] = (PacketType::Final as u8) << 6 | bytes as u8; //header
                                                                   // println!("serialized cmd: {:02X?}", &buffer[0..bytes]);
@@ -171,63 +171,68 @@ impl Commander<InfoResult> for Info {
     const ID: CommandId = CommandId::Info;
 
     fn transfer(&self, d: &hidapi::HidDevice) -> Result<InfoResult, Error> {
-        let bitsnbytes = something(Self::ID, d)?;
+        let mut seq: u16 = 1;
+        let mut ptype = PacketType::Inner;
 
-        let info: InfoResult = (bitsnbytes.as_slice()).pread_with::<InfoResult>(0, LE)?;
+        let command = Command {
+            command_id: CommandId::Info,
+            //arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
+            tag: seq,
+            //The two reserved bytes in the command should be sent as zero and ignored by the device
+            _reserved0: 0,
+            _reserved1: 0,
+            // data: vec![],
+        };
+
+        //All words in HF2 are little endian.
+
+        // for n bytes of data create n packets
+
+        // Write it back to a buffer
+        let buffer = &mut [0; 64];
+
+        let bytes = buffer.pwrite_with(&command, 1, LE)?;
+
+        buffer[0] = (PacketType::Final as u8) << 6 | bytes as u8; //header
+                                                                  // println!("serialized cmd: {:02X?}", &buffer[0..bytes]);
+        d.write(buffer)?;
+
+        // Read a single `Data` at offset zero in big-endian byte order.
+
+        let mut bitsnbytes: Vec<u8> = vec![];
+
+        //if inner, need to buffer more packets
+        while ptype == PacketType::Inner {
+            d.read(buffer)?;
+            println!("Receive response: {:02X?}", &buffer[..]);
+
+            ptype = PacketType::try_from(buffer[0] >> 6).unwrap();
+            let len: usize = (buffer[0] & 0x3F) as usize;
+
+            //skip the header byte
+            bitsnbytes.extend_from_slice(&buffer[1..=len]);
+        }
+
+        let mut offset = 0;
+
+        let resp = bitsnbytes
+            .as_slice()
+            .gread_with::<CommandResponse>(&mut offset, LE)?;
+
+        if resp.status != CommandResponseStatus::Success {
+            return Err(Error::MalformedRequest);
+        }
+
+        if resp.tag != seq {
+            return Err(Error::Sequence);
+        }
+
+        let info: InfoResult = (bitsnbytes.as_slice()).gread_with::<InfoResult>(&mut offset, LE)?;
+
+        // println!("data: {:?}", info);
 
         Ok(info)
     }
-}
-
-fn something(id: CommandId, d: &hidapi::HidDevice) -> Result<Vec<u8>, Error> {
-    let mut seq: u16 = 1;
-
-    let command = Command {
-        command_id: id,
-        //arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
-        tag: seq,
-        //The two reserved bytes in the command should be sent as zero and ignored by the device
-        _reserved0: 0,
-        _reserved1: 0,
-        // data: vec![],
-    };
-    let buffer = &mut [0; 64];
-
-    let bytes = buffer.pwrite_with(command, 1, LE)?;
-    buffer[0] = (PacketType::Final as u8) << 6 | bytes as u8;
-
-    d.write(buffer)?;
-
-    let mut bitsnbytes: Vec<u8> = vec![];
-
-    //if inner, need to buffer more packets
-    let mut ptype = PacketType::Inner;
-    while ptype == PacketType::Inner {
-        d.read(buffer)?;
-        println!("Receive response: {:02X?}", &buffer[..]);
-
-        ptype = PacketType::try_from(buffer[0] >> 6).unwrap();
-        let len: usize = (buffer[0] & 0x3F) as usize;
-
-        //skip the header byte
-        bitsnbytes.extend_from_slice(&buffer[1..=len]);
-    }
-
-    let mut offset = 0;
-
-    let resp = bitsnbytes
-        .as_slice()
-        .gread_with::<CommandResponse>(&mut offset, LE)?;
-
-    if resp.status != CommandResponseStatus::Success {
-        return Err(Error::MalformedRequest);
-    }
-
-    if resp.tag != seq {
-        return Err(Error::Sequence);
-    }
-
-    Ok(bitsnbytes[offset..].to_vec())
 }
 
 #[derive(Debug)]
