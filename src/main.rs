@@ -1,10 +1,6 @@
 ///https://github.com/Microsoft/uf2/blob/master/hf2.md
-use byteorder::{LittleEndian, WriteBytesExt};
 use hidapi::HidApi;
-use scroll::{ctx, Cread, Cwrite, Pread, Pwrite, LE};
-
-#[macro_use]
-extern crate scroll;
+use scroll::{ctx, Pread, Pwrite, LE};
 
 #[derive(Debug, Copy, Clone)]
 enum CommandId {
@@ -30,23 +26,85 @@ enum CommandId {
     Dmesg = 0x0010,
 }
 
+#[derive(Debug)]
 enum BinInfoMode {
     //bootloader, and thus flashing of user-space programs is allowed
-    Bootloader = 0x01,
+    Bootloader = 0x0001,
     //user-space mode. It also returns the size of flash page size (flashing needs to be done on page-by-page basis), and the maximum size of message. It is always the case that max_message_size >= flash_page_size + 64.
-    User = 0x02,
+    User = 0x0002,
 }
 
+use core::convert::TryFrom;
+
+impl TryFrom<u32> for BinInfoMode {
+    type Error = Error;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(BinInfoMode::Bootloader),
+            2 => Ok(BinInfoMode::User),
+            _ => Err(Error::Parse),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct BinInfoResult {
-    mode: BinInfoMode,
+    mode: BinInfoMode, //    uint32_t mode;
     flash_page_size: u32,
     flash_num_pages: u32,
     max_message_size: u32,
     family_id: u32, // optional
 }
 
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
+    type Error = scroll::Error;
+    fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
+        if this.len() < 20 {
+            return Err((scroll::Error::Custom("whatever".to_string())).into());
+        }
+
+        //does it give me offset somehow??? or just slice appropriately for me?s
+        let mut offset = 0;
+        let mode: u32 = this.gread_with::<u32>(&mut offset, le)?;
+        let mode: Result<BinInfoMode, Error> = BinInfoMode::try_from(mode);
+        let mode: BinInfoMode = mode.unwrap();
+        let flash_page_size = this.gread_with::<u32>(&mut offset, le)?;
+        let flash_num_pages = this.gread_with::<u32>(&mut offset, le)?;
+        let max_message_size = this.gread_with::<u32>(&mut offset, le)?;
+        let family_id = this.gread_with::<u32>(&mut offset, le)?;
+
+        Ok((
+            BinInfoResult {
+                mode,
+                flash_page_size,
+                flash_num_pages,
+                max_message_size,
+                family_id,
+            },
+            offset,
+        ))
+    }
+}
+
+#[derive(Debug)]
 struct InfoResult {
     info: String,
+}
+
+//todo... not really using ctx here but. oh well
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResult {
+    type Error = scroll::Error;
+    fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
+        let mut bytes = vec![0; this.len()];
+
+        let mut offset = 0;
+        this.gread_inout_with(&mut offset, &mut bytes, LE)?;
+
+        let info = std::str::from_utf8(&bytes).unwrap();
+
+        Ok((InfoResult { info: info.into() }, offset))
+    }
 }
 
 struct WriteFlashPageCommand {
@@ -60,6 +118,7 @@ struct ChksumPagesCommand {
 }
 
 //Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
+#[derive(Debug)]
 struct ChksumPagesResult {
     chksums: Vec<u16>,
 }
@@ -68,6 +127,8 @@ struct ReadWordsCommand {
     target_addr: u32,
     num_words: u32,
 }
+
+#[derive(Debug)]
 struct ReadWordsResult {
     words: Vec<u32>,
 }
@@ -79,6 +140,7 @@ struct WriteWordsCommand {
 }
 
 // no arguments
+#[derive(Debug)]
 struct DmesgResult {
     logs: String,
 }
@@ -90,7 +152,7 @@ struct Command {
     //The two reserved bytes in the command should be sent as zero and ignored by the device
     _reserved0: u8,
     _reserved1: u8,
-    data: Vec<u8>,
+    // data: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -101,7 +163,7 @@ struct CommandResponse {
 
     //additional information In case of non-zero status
     status_info: u8,
-    data: Vec<u8>,
+    // data: Vec<u8>,
 }
 
 impl<'a> ::scroll::ctx::TryIntoCtx<::scroll::Endian> for &'a Command {
@@ -117,32 +179,72 @@ impl<'a> ::scroll::ctx::TryIntoCtx<::scroll::Endian> for &'a Command {
         dst.gwrite_with(&self.tag, &mut offset, ctx)?;
         dst.gwrite_with(&self._reserved0, &mut offset, ctx)?;
         dst.gwrite_with(&self._reserved1, &mut offset, ctx)?;
-        // dst.gwrite_with(&self.data, offset, ctx)?;
+
+        // for item in &self.data {
+        //     dst.gwrite_with(item, &mut offset, ctx)?;
+        // }
+
         Ok(offset)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum CommandResponseStatus {
     //command understood and executed correctly
     Success = 0x00,
     //command not understood
-    Wut = 0x01,
+    ParseError = 0x01,
     //command execution error
-    Error = 0x02,
+    ExecutionError = 0x02,
 }
 
-impl From<u8> for CommandResponseStatus {
-    fn from(val: u8) -> Self {
+impl TryFrom<u8> for CommandResponseStatus {
+    type Error = Error;
+
+    fn try_from(val: u8) -> Result<Self, Self::Error> {
         match val {
-            0 => CommandResponseStatus::Success,
-            0 => CommandResponseStatus::Wut,
-            0 => CommandResponseStatus::Error,
-            _ => unreachable!(),
+            0 => Ok(CommandResponseStatus::Success),
+            1 => Ok(CommandResponseStatus::ParseError),
+            2 => Ok(CommandResponseStatus::ExecutionError),
+            _ => Err(Error::Parse),
         }
     }
 }
 
+#[derive(Debug)]
+enum PacketType {
+    //Inner packet of a command message
+    Inner = 0,
+    //Final packet of a command message
+    Final = 1,
+    //Serial stdout
+    StdOut = 2,
+    //Serial stderr
+    Stderr = 3,
+}
+
+impl TryFrom<u8> for PacketType {
+    type Error = Error;
+
+    fn try_from(val: u8) -> Result<Self, Self::Error> {
+        match val {
+            0 => Ok(PacketType::Inner),
+            1 => Ok(PacketType::Final),
+            2 => Ok(PacketType::StdOut),
+            3 => Ok(PacketType::Stderr),
+            _ => Err(Error::Parse),
+        }
+    }
+}
+
+struct Packet {
+    ptype: PacketType,
+    length: u8,
+    data: Vec<u8>,
+}
+
+// doesnt know what the dta is supposed to be decoded as
+// thats linked via the seq number outside,  so we cant decode here
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
     type Error = scroll::Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
@@ -152,17 +254,22 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
 
         let mut offset = 0;
         let tag = this.gread_with::<u16>(&mut offset, le)?;
-        let status: CommandResponseStatus = this.gread_with::<u8>(&mut offset, le)?.into();
+        let status: u8 = this.gread_with::<u8>(&mut offset, le)?;
+        let status = CommandResponseStatus::try_from(status).unwrap();
         let status_info = this.gread_with::<u8>(&mut offset, le)?;
-        let mut data: Vec<u8> = vec![];
-        this.gread_inout_with(&mut offset, &mut data, le)?;
+        // let mut data: Vec<u8> = vec![];
+        // this.gread_inout_with(&mut offset, &mut data, le)?;
+
+        // for item in &self.data {
+        //     dst.gwrite_with(item, &mut offset, ctx)?;
+        // }
 
         Ok((
             CommandResponse {
                 tag,
                 status,
                 status_info,
-                data,
+                // data,
             },
             offset,
         ))
@@ -171,94 +278,113 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
 
 #[derive(Clone, Debug)]
 pub(crate) enum Error {
-    NotEnoughSpace,
+    Parse,
+    MalformedRequest,
+    Execution,
+    Sequence,
+    Transmission,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api = HidApi::new().expect("Failed to create API instance");
+impl From<hidapi::HidError> for Error {
+    fn from(_err: hidapi::HidError) -> Self {
+        Error::Transmission
+    }
+}
 
-    let d = api.open(0x239A, 0x003D).expect("Failed to open device");
+impl From<scroll::Error> for Error {
+    fn from(_err: scroll::Error) -> Self {
+        Error::Parse
+    }
+}
 
-    //All words in HF2 are little endian.
+// enum UF2Result {
+//     BinInfo(BinInfoResult),
+//     Info(InfoResult),
+//     ChksumPages(ChksumPagesResult),
+//     ReadWords(ReadWordsResult),
+//     Dmesg(DmesgResult),
+// }
 
-    // for n bytes of data create n packets
-
-    // let max_message_size = 320;
-    // for (i, data) in buffer.chunks(max_message_size).enumerate() {
-    //     // the type of the packet, in the two high bits. 0x00 inner 0x01 final
-    //     // length of the remaining data (payload) in the packet, in the lower 6 bits, i.e., between 0 and 63 inclusive
-    //     let header: u8 = if last {
-    //         0x1 << 6 & data.len() as u8
-    //     } else {
-    //         data.len() as u8
-    //     };
-    // }
-    // let serialized: Vec<u8> = serialize(&command, Infinite).unwrap();
-    // println!("serialized = {:?}", serialized);
-    let mut seq: u16 = 0;
-
-    // if let Ok(context) = rusb::Context::new() {
-    //     if let Ok(devices) = context.devices() {
-    //         for d in devices.iter() {
-
-    //             println!("{:?}", d);
+fn getInfo(d: hidapi::HidDevice) -> Result<InfoResult, Error> {
+    let mut seq: u16 = 1;
 
     let command = Command {
-        command_id: CommandId::BinInfo,
+        command_id: CommandId::Info,
         //arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
         tag: seq,
         //The two reserved bytes in the command should be sent as zero and ignored by the device
         _reserved0: 0,
         _reserved1: 0,
-        data: vec![],
+        // data: vec![],
     };
 
+    //All words in HF2 are little endian.
+
+    // for n bytes of data create n packets
+
     // Write it back to a buffer
-    let buffer = &mut [0; 24];
+    let buffer = &mut [0; 64];
 
-    let bytes = buffer.pwrite_with(&command, 0, LE).unwrap();
+    let bytes = buffer.pwrite_with(&command, 1, LE)?;
 
-    // let idx = command.pwrite_with::<Command>(&buffer, 0)?;
+    // let max_message_size = 320;
+    // for (i, data) in buffer[0..bytes].chunks(max_message_size).enumerate() {
+    //     // the type of the packet, in the two high bits. 0x00 inner 0x01 final
+    //     // length of the remaining data (payload) in the packet, in the lower 6 bits, i.e., between 0 and 63 inclusive
+    //     let header: u8 = if last {
+    //         (PacketType::Final as u8) << 6 & data.len() as u8
+    //     } else {
+    //         (PacketType::Inner as u8) << 6 & data.len() as u8
+    //     };
 
-    // command.try_into_ctx(&buffer, 0, LE)?;
-    println!("serialized buffer: {:02X?}", &buffer);
+    //     // buffer[0] = 0x1 << 6 | bytes as u8; //final packet
+    //     println!("serialized cmd: {:02X?}", &data);
 
-    // let response = send_command(d, command);
-
-    // command.to_bytes(buffer).unwrap();
-    d.write(&buffer[0..bytes]).unwrap();
+    //     d.write(&data).unwrap();
+    // }
+    buffer[0] = (PacketType::Final as u8) << 6 | bytes as u8; //header
+    println!("serialized cmd: {:02X?}", &buffer[0..bytes]);
+    d.write(buffer)?;
 
     // Read a single `Data` at offset zero in big-endian byte order.
 
-    d.read(buffer).unwrap();
-    println!("Receive buffer: {:02X?}", &buffer[..]);
+    d.read(buffer)?;
+    println!("Receive response: {:02X?}", &buffer[..]);
 
-    let resp = buffer.pread_with::<CommandResponse>(0, LE)?;
+    //todo if not final, need to buffer more packets
+    let ptype = PacketType::try_from(buffer[0] >> 6).unwrap();
+    let len: usize = (buffer[0] & 0x3F) as usize;
 
-    println!("deser rsp: {:?}", resp);
+    //skip the header byte
+    let mut offset = 1;
 
-    // cursor.write_u32::<LittleEndian>(command.command_id as u32)?;
-    // cursor.write_u16::<LittleEndian>(command.tag)?;
-    // cursor.write_u8(command.reserved0)?;
-    // cursor.write_u8(command.reserved1)?;
-    // cursor.write_u32::<LittleEndian>(0xffff)?;
+    //might have more data than we need, so slice
+    let resp = (&buffer[..len]).gread_with::<CommandResponse>(&mut offset, LE)?;
 
-    // println!("Send buffer: {:02X?}", &buffer[..]);
+    if resp.status != CommandResponseStatus::Success {
+        return Err(Error::MalformedRequest);
+    }
 
-    // Read back resonse.
-    // TODO: Error handling & real USB reading.
-    // let buffer = &mut [0; 4];
-    // d.read(buffer).unwrap();
-    // println!("Receive buffer: {:02X?}", &buffer[..]);
-    // let response = CommandResponse::from_bytes(buffer);
+    if resp.tag != seq {
+        return Err(Error::Sequence);
+    }
 
-    // println!("{:?}", response);
-    // seq += 1;
+    //might have more data than we need, so slice
+    //whats left is the result type.. could do this inside command response in future?
+    let info: InfoResult = (&buffer[..len]).gread_with::<InfoResult>(&mut offset, LE)?;
 
-    //         }
-    //     }
-    // }
+    println!("data: {:?}", info);
 
+    Ok(info)
+}
+
+fn main() -> Result<(), Error> {
+    let api = HidApi::new().expect("Couldn't find system usb");
+
+    let d = api.open(0x239A, 0x003D).expect("Couldn't find usb device");
+
+    let info: InfoResult = getInfo(d)?;
+    println!("{:?}", info);
     Ok(())
 }
 
