@@ -1,3 +1,4 @@
+use core::convert::TryFrom;
 ///https://github.com/Microsoft/uf2/blob/master/hf2.md
 use hidapi::HidApi;
 use scroll::{ctx, Pread, Pwrite, LE};
@@ -34,8 +35,6 @@ enum BinInfoMode {
     User = 0x0002,
 }
 
-use core::convert::TryFrom;
-
 impl TryFrom<u32> for BinInfoMode {
     type Error = Error;
 
@@ -48,19 +47,93 @@ impl TryFrom<u32> for BinInfoMode {
     }
 }
 
+trait CommanderResult {}
+
+trait Commander<RES: CommanderResult> {
+    const ID: CommandId;
+
+    fn transfer(&self, d: &hidapi::HidDevice) -> Result<RES, Error>;
+}
+
+struct BinInfo {}
+
+impl Commander<BinInfoResult> for BinInfo {
+    const ID: CommandId = CommandId::BinInfo;
+
+    fn transfer(&self, d: &hidapi::HidDevice) -> Result<BinInfoResult, Error> {
+        let mut seq: u16 = 1;
+
+        let command = Command {
+            command_id: Self::ID,
+            //arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
+            tag: seq,
+            //The two reserved bytes in the command should be sent as zero and ignored by the device
+            _reserved0: 0,
+            _reserved1: 0,
+            // data: vec![],
+        };
+
+        //All words in HF2 are little endian.
+
+        // for n bytes of data create n packets
+
+        // Write it back to a buffer
+        let buffer = &mut [0; 64];
+
+        let bytes = buffer.pwrite_with(command, 1, LE)?;
+
+        buffer[0] = (PacketType::Final as u8) << 6 | bytes as u8; //header
+                                                                  // println!("serialized cmd: {:02X?}", &buffer[0..bytes]);
+        d.write(buffer)?;
+
+        // Read a single `Data` at offset zero in big-endian byte order.
+
+        d.read(buffer)?;
+        // println!("Receive response: {:02X?}", &buffer[..]);
+
+        //todo if not final, need to buffer more packets
+        let ptype = PacketType::try_from(buffer[0] >> 6).unwrap();
+        let len: usize = (buffer[0] & 0x3F) as usize;
+
+        //skip the header byte
+        let mut offset = 1;
+
+        //might have more data than we need, so slice
+        let resp = (&buffer[..=len]).gread_with::<CommandResponse>(&mut offset, LE)?;
+
+        if resp.status != CommandResponseStatus::Success {
+            return Err(Error::MalformedRequest);
+        }
+
+        if resp.tag != seq {
+            return Err(Error::Sequence);
+        }
+
+        //might have more data than we need, so slice
+        //whats left is the result type.. could do this inside command response in future?
+        let info: BinInfoResult = (&buffer[..=len]).gread_with::<BinInfoResult>(&mut offset, LE)?;
+
+        // println!("data: {:?}", info);
+
+        Ok(info)
+    }
+}
+
 #[derive(Debug)]
 struct BinInfoResult {
     mode: BinInfoMode, //    uint32_t mode;
     flash_page_size: u32,
     flash_num_pages: u32,
     max_message_size: u32,
-    family_id: u32, // optional
+    family_id: Option<u32>, // optional
 }
+
+impl CommanderResult for BinInfoResult {}
 
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
     type Error = scroll::Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        if this.len() < 20 {
+        if this.len() < 16 {
             return Err((scroll::Error::Custom("whatever".to_string())).into());
         }
 
@@ -72,7 +145,13 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
         let flash_page_size = this.gread_with::<u32>(&mut offset, le)?;
         let flash_num_pages = this.gread_with::<u32>(&mut offset, le)?;
         let max_message_size = this.gread_with::<u32>(&mut offset, le)?;
-        let family_id = this.gread_with::<u32>(&mut offset, le)?;
+
+        //todo, not sure if optional means it would be 0, or would not be included at all
+        let family_id = if offset < this.len() {
+            Some(this.gread_with::<u32>(&mut offset, le)?)
+        } else {
+            None
+        };
 
         Ok((
             BinInfoResult {
@@ -87,12 +166,76 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
     }
 }
 
+struct Info {}
+impl Commander<InfoResult> for Info {
+    const ID: CommandId = CommandId::Info;
+
+    fn transfer(&self, d: &hidapi::HidDevice) -> Result<InfoResult, Error> {
+        let bitsnbytes = something(Self::ID, d)?;
+
+        let info: InfoResult = (bitsnbytes.as_slice()).pread_with::<InfoResult>(0, LE)?;
+
+        Ok(info)
+    }
+}
+
+fn something(id: CommandId, d: &hidapi::HidDevice) -> Result<Vec<u8>, Error> {
+    let mut seq: u16 = 1;
+
+    let command = Command {
+        command_id: id,
+        //arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
+        tag: seq,
+        //The two reserved bytes in the command should be sent as zero and ignored by the device
+        _reserved0: 0,
+        _reserved1: 0,
+        // data: vec![],
+    };
+    let buffer = &mut [0; 64];
+
+    let bytes = buffer.pwrite_with(command, 1, LE)?;
+    buffer[0] = (PacketType::Final as u8) << 6 | bytes as u8;
+
+    d.write(buffer)?;
+
+    let mut bitsnbytes: Vec<u8> = vec![];
+
+    //if inner, need to buffer more packets
+    let mut ptype = PacketType::Inner;
+    while ptype == PacketType::Inner {
+        d.read(buffer)?;
+        println!("Receive response: {:02X?}", &buffer[..]);
+
+        ptype = PacketType::try_from(buffer[0] >> 6).unwrap();
+        let len: usize = (buffer[0] & 0x3F) as usize;
+
+        //skip the header byte
+        bitsnbytes.extend_from_slice(&buffer[1..=len]);
+    }
+
+    let mut offset = 0;
+
+    let resp = bitsnbytes
+        .as_slice()
+        .gread_with::<CommandResponse>(&mut offset, LE)?;
+
+    if resp.status != CommandResponseStatus::Success {
+        return Err(Error::MalformedRequest);
+    }
+
+    if resp.tag != seq {
+        return Err(Error::Sequence);
+    }
+
+    Ok(bitsnbytes[offset..].to_vec())
+}
+
 #[derive(Debug)]
 struct InfoResult {
     info: String,
 }
+impl CommanderResult for InfoResult {}
 
-//todo... not really using ctx here but. oh well
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResult {
     type Error = scroll::Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
@@ -211,7 +354,7 @@ impl TryFrom<u8> for CommandResponseStatus {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum PacketType {
     //Inner packet of a command message
     Inner = 0,
@@ -237,17 +380,13 @@ impl TryFrom<u8> for PacketType {
     }
 }
 
-struct Packet {
-    ptype: PacketType,
-    length: u8,
-    data: Vec<u8>,
-}
-
 // doesnt know what the dta is supposed to be decoded as
 // thats linked via the seq number outside,  so we cant decode here
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
     type Error = scroll::Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
+        println!("len{:?}", this.len());
+
         if this.len() < 8 {
             return Err((scroll::Error::Custom("whatever".to_string())).into());
         }
@@ -305,86 +444,17 @@ impl From<scroll::Error> for Error {
 //     Dmesg(DmesgResult),
 // }
 
-fn getInfo(d: hidapi::HidDevice) -> Result<InfoResult, Error> {
-    let mut seq: u16 = 1;
-
-    let command = Command {
-        command_id: CommandId::Info,
-        //arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
-        tag: seq,
-        //The two reserved bytes in the command should be sent as zero and ignored by the device
-        _reserved0: 0,
-        _reserved1: 0,
-        // data: vec![],
-    };
-
-    //All words in HF2 are little endian.
-
-    // for n bytes of data create n packets
-
-    // Write it back to a buffer
-    let buffer = &mut [0; 64];
-
-    let bytes = buffer.pwrite_with(&command, 1, LE)?;
-
-    // let max_message_size = 320;
-    // for (i, data) in buffer[0..bytes].chunks(max_message_size).enumerate() {
-    //     // the type of the packet, in the two high bits. 0x00 inner 0x01 final
-    //     // length of the remaining data (payload) in the packet, in the lower 6 bits, i.e., between 0 and 63 inclusive
-    //     let header: u8 = if last {
-    //         (PacketType::Final as u8) << 6 & data.len() as u8
-    //     } else {
-    //         (PacketType::Inner as u8) << 6 & data.len() as u8
-    //     };
-
-    //     // buffer[0] = 0x1 << 6 | bytes as u8; //final packet
-    //     println!("serialized cmd: {:02X?}", &data);
-
-    //     d.write(&data).unwrap();
-    // }
-    buffer[0] = (PacketType::Final as u8) << 6 | bytes as u8; //header
-    println!("serialized cmd: {:02X?}", &buffer[0..bytes]);
-    d.write(buffer)?;
-
-    // Read a single `Data` at offset zero in big-endian byte order.
-
-    d.read(buffer)?;
-    println!("Receive response: {:02X?}", &buffer[..]);
-
-    //todo if not final, need to buffer more packets
-    let ptype = PacketType::try_from(buffer[0] >> 6).unwrap();
-    let len: usize = (buffer[0] & 0x3F) as usize;
-
-    //skip the header byte
-    let mut offset = 1;
-
-    //might have more data than we need, so slice
-    let resp = (&buffer[..len]).gread_with::<CommandResponse>(&mut offset, LE)?;
-
-    if resp.status != CommandResponseStatus::Success {
-        return Err(Error::MalformedRequest);
-    }
-
-    if resp.tag != seq {
-        return Err(Error::Sequence);
-    }
-
-    //might have more data than we need, so slice
-    //whats left is the result type.. could do this inside command response in future?
-    let info: InfoResult = (&buffer[..len]).gread_with::<InfoResult>(&mut offset, LE)?;
-
-    println!("data: {:?}", info);
-
-    Ok(info)
-}
-
 fn main() -> Result<(), Error> {
     let api = HidApi::new().expect("Couldn't find system usb");
 
     let d = api.open(0x239A, 0x003D).expect("Couldn't find usb device");
 
-    let info: InfoResult = getInfo(d)?;
+    let bininfo: BinInfoResult = BinInfo {}.transfer(&d)?;
+    println!("{:?}", bininfo);
+
+    let info: InfoResult = Info {}.transfer(&d)?;
     println!("{:?}", info);
+
     Ok(())
 }
 
