@@ -1,7 +1,10 @@
-use core::convert::TryFrom;
 ///https://github.com/Microsoft/uf2/blob/master/hf2.md
+use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
+use core::convert::TryFrom;
+use crc::{crc16, Hasher16};
 use hidapi::HidApi;
 use scroll::{ctx, Pread, Pwrite, LE};
+use std::fs::File;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum CommandId {
@@ -19,7 +22,7 @@ enum CommandId {
     WriteFlashPage = 0x0006,
     //Compute checksum of a number of pages. Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
     Checksum = 0x0007,
-    //Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
+    //Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_address must be suitably aligned. This is to support reading of special IO regions.
     ReadWords = 0x0008,
     //Dual of READ WORDS, with the same constraints. No Result.
     WriteWords = 0x0009,
@@ -27,7 +30,7 @@ enum CommandId {
     Dmesg = 0x0010,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum BinInfoMode {
     //bootloader, and thus flashing of user-space programs is allowed
     Bootloader = 0x0001,
@@ -140,23 +143,23 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResult {
 
 //Write a single page of flash memory. No Result.
 struct WriteFlashPage {
-    target_addr: u32,
+    target_address: u32,
     data: Vec<u8>,
 }
 
 impl Commander<NoResult> for WriteFlashPage {
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
-        let data = &mut [0_u8; 64];
+        let mut data = vec![0_u8; self.data.len() + 4];
 
         let mut offset = 0;
 
-        data.gwrite_with(self.target_addr, &mut offset, LE)?;
+        data.gwrite_with(self.target_address, &mut offset, LE)?;
 
         for i in &self.data {
             data.gwrite_with(i, &mut offset, LE)?;
         }
 
-        let _ = transfer(CommandId::WriteFlashPage, d, &data[..offset])?;
+        let _ = transfer(CommandId::WriteFlashPage, d, &data[..])?;
 
         Ok(NoResult {})
     }
@@ -164,13 +167,20 @@ impl Commander<NoResult> for WriteFlashPage {
 
 //Compute checksum of a number of pages. Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
 struct ChksumPages {
-    target_addr: u32,
+    target_address: u32,
     num_pages: u32,
 }
 
 impl Commander<ChksumPagesResult> for ChksumPages {
     fn send(&self, d: &hidapi::HidDevice) -> Result<ChksumPagesResult, Error> {
-        let bitsnbytes = transfer(CommandId::Checksum, d, &[0])?;
+        let data = &mut [0_u8; 8];
+
+        let mut offset = 0;
+
+        data.gwrite_with(self.target_address, &mut offset, LE)?;
+        data.gwrite_with(self.num_pages, &mut offset, LE)?;
+
+        let bitsnbytes = transfer(CommandId::Checksum, d, &data[..])?;
 
         let res: ChksumPagesResult =
             (bitsnbytes.as_slice()).pread_with::<ChksumPagesResult>(0, LE)?;
@@ -230,7 +240,7 @@ impl Commander<NoResult> for StartFlash {
 
 //Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
 struct ReadWords {
-    target_addr: u32,
+    target_address: u32,
     num_words: u32,
 }
 
@@ -240,7 +250,7 @@ impl Commander<ReadWordsResult> for ReadWords {
 
         let mut offset = 0;
 
-        data.gwrite_with(self.target_addr, &mut offset, LE)?;
+        data.gwrite_with(self.target_address, &mut offset, LE)?;
         data.gwrite_with(self.num_words, &mut offset, LE)?;
 
         let bitsnbytes = transfer(CommandId::ReadWords, d, &data[..])?;
@@ -271,7 +281,7 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResult {
 
 //Dual of READ WORDS, with the same constraints. No Result.
 struct WriteWords {
-    target_addr: u32,
+    target_address: u32,
     num_words: u32,
     words: Vec<u32>,
 }
@@ -282,7 +292,7 @@ impl Commander<NoResult> for WriteWords {
 
         let mut offset = 0;
 
-        data.gwrite_with(self.target_addr, &mut offset, LE)?;
+        data.gwrite_with(self.target_address, &mut offset, LE)?;
         data.gwrite_with(self.num_words, &mut offset, LE)?;
 
         for i in &self.words {
@@ -424,58 +434,75 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
 }
 
 fn transfer(id: CommandId, d: &hidapi::HidDevice, data: &[u8]) -> Result<Vec<u8>, Error> {
-    let mut seq: u16 = 1;
+    let mut seq: u16 = 0;
 
-    let buffer = &mut [0_u8; 264];
+    //Packets are up to 64 bytes long
+    let buffer = &mut [0_u8; 64];
 
-    let mut offset = 1;
+    //command struct is 8, header is 1
+    let step = 64 - 9;
+    for chunk in data.chunks(step as usize) {
+        seq += 1;
 
-    buffer.gwrite_with(id as u32, &mut offset, LE)?;
-    buffer.gwrite_with(seq, &mut offset, LE)?;
-    buffer.gwrite_with(0_u8, &mut offset, LE)?;
-    buffer.gwrite_with(0_u8, &mut offset, LE)?;
+        //account for header
+        let mut offset = 1;
 
-    // println!("{:?} {:?}", offset, data.len());
+        buffer.gwrite_with(id as u32, &mut offset, LE)?;
+        buffer.gwrite_with(seq, &mut offset, LE)?;
+        buffer.gwrite_with(0_u8, &mut offset, LE)?;
+        buffer.gwrite_with(0_u8, &mut offset, LE)?;
 
-    // data is at least a single byte
-    // we dont include header in length, so offset -1
-    // smallest packet is then 1 byte header, 8 length + 1 user = 10 buffer
-    let len: usize = offset - 1 + data.len();
+        // println!("{:?} {:?}", offset, data.len());
 
-    buffer[0] = (PacketType::Final as u8) << 6 | len as u8;
+        // we dont include header in length, so offset -1
+        let len: usize = offset - 1 + data.len();
 
-    let first_and_last = [&buffer[..offset], &data[..]].concat();
+        println!("{:?} {:?}", step * seq, data.len());
 
-    // println!("transmitting: {:02X?}", &first_and_last[..]);
+        let packet = if step * seq >= (data.len() as u16) {
+            PacketType::Final
+        } else {
+            PacketType::Inner
+        };
 
-    d.write(first_and_last.as_slice())?;
+        buffer[0] = (packet as u8) << 6 | len as u8;
 
-    let mut bitsnbytes: Vec<u8> = vec![];
+        let first_and_last = [&buffer[..offset], &chunk[..]].concat();
+
+        d.write(first_and_last.as_slice())?;
+    }
 
     //exit early for some commands
-    if id == CommandId::ResetIntoApp
-        || id == CommandId::ResetIntoBootloader
-        || id == CommandId::WriteFlashPage
-        || id == CommandId::WriteWords
-    {
+    if id == CommandId::ResetIntoApp || id == CommandId::ResetIntoBootloader {
         return Ok(vec![]);
     }
 
-    //if inner, need to buffer more packets
-    let mut ptype = PacketType::Inner;
-    while ptype == PacketType::Inner {
+    //exit early for some commands
+    if id == CommandId::ResetIntoApp || id == CommandId::ResetIntoBootloader {
+        return Ok(vec![]);
+    }
+
+    let mut bitsnbytes: Vec<u8> = vec![];
+
+    // keep reading until Final packet
+    while {
         d.read(buffer)?;
 
-        ptype = PacketType::try_from(buffer[0] >> 6)?;
+        let ptype = PacketType::try_from(buffer[0] >> 6)?;
         let len: usize = (buffer[0] & 0x3F) as usize;
-        // println!("header: {:02X?}", &buffer[0]);
-        // println!("len: {:?}", len);
-        // println!("ptype: {:?}", ptype);
-        // println!("Receive response: {:02X?}", &buffer[1..=len]);
+        println!(
+            "header: {:02X?} (ptype: {:?} len: {:?}) data: {:02X?}",
+            &buffer[0],
+            ptype,
+            len,
+            &buffer[1..=len]
+        );
 
         //skip the header byte and strip excess bytes remote is allowed to send
         bitsnbytes.extend_from_slice(&buffer[1..=len]);
-    }
+
+        ptype == PacketType::Inner
+    } {}
 
     let mut offset = 0;
 
@@ -487,15 +514,12 @@ fn transfer(id: CommandId, d: &hidapi::HidDevice, data: &[u8]) -> Result<Vec<u8>
         return Err(Error::MalformedRequest);
     }
 
-    if resp.tag != seq {
-        return Err(Error::Sequence);
-    }
-
     Ok(bitsnbytes[offset..].to_vec())
 }
 
 #[derive(Clone, Debug)]
 pub(crate) enum Error {
+    Arguments,
     Parse,
     MalformedRequest,
     Execution,
@@ -521,16 +545,21 @@ impl From<std::str::Utf8Error> for Error {
     }
 }
 
+impl From<std::io::Error> for Error {
+    fn from(_err: std::io::Error) -> Self {
+        Error::Arguments
+    }
+}
+
 fn main() -> Result<(), Error> {
     let api = HidApi::new().expect("Couldn't find system usb");
 
     let d = api.open(0x239A, 0x003D).expect("Couldn't find usb device");
 
     let bininfo: BinInfoResult = BinInfo {}.send(&d)?;
-    println!("{:?}", bininfo);
-    //then total kb is flash_num_pages * flash_page_size / 1024
     println!(
-        "{:?}kb",
+        "{:?} {:?}kb",
+        bininfo,
         bininfo.flash_num_pages * bininfo.flash_page_size / 1024
     );
 
@@ -541,36 +570,97 @@ fn main() -> Result<(), Error> {
     // let dmesg: DmesgResult = Dmesg {}.send(&d)?;
     // println!("{:?}", dmesg);
 
-    // let _ = ResetIntoApp {}.send(&d)?;
-    // let _ = ResetIntoBootloader {}.send(&d)?;
-    //no idea what this does
-    // let _ = StartFlash {}.send(&d)?;
-    // let _ = WriteFlashPage {
-    //     target_addr: 0,
-    //     data: vec![],
-    // }
-    // .send(&d)?;
+    if bininfo.mode != BinInfoMode::Bootloader {
+        let _ = StartFlash {}.send(&d)?;
+    }
 
-    // let chk: ChksumPagesResult = ChksumPages {
-    //     target_addr: 0,
-    //     num_pages: 1,
-    // }
-    // .send(&d)?;
-    // println!("{:?}", chk);
+    let starting_address = 0x4000; //todo samd51, get out of the binary or from an arg
+    let top_address = bininfo.flash_num_pages * bininfo.flash_page_size;
 
-    // //no worky?
-    // let words: ReadWordsResult = ReadWords {
-    //     target_addr: 0x4000,
-    //     num_words: 12,
+    {
+        //upload
+
+        let mut f = File::open("./ferris_img.bin")?;
+        let mut binary = Vec::new();
+        //shouldnt there be a chunking interator for htis?
+        f.read_to_end(&mut binary)?;
+
+        use std::io::prelude::*;
+
+        //sigh, cant enumerate, right?
+        let mut page_index = 0;
+        for data in binary.chunks(bininfo.flash_page_size as usize) {
+            let target_address = starting_address + bininfo.flash_page_size * page_index;
+            // println!("{:02X?}", target_address);
+            // println!("{:?}", data.len());
+            // println!("{:02X?}", data);
+            let _ = WriteFlashPage {
+                target_address,
+                data: data.to_vec(),
+            }
+            .send(&d)?;
+
+            // println!("{:?}", crc16::checksum_x25(data));
+
+            page_index += 1;
+        }
+    }
+
+    // println!("done");
+    // {
+    //     //checksums
+    //     let max_pages = bininfo.max_message_size / 2 - 2;
+    //     let steps = max_pages * bininfo.flash_page_size;
+
+    //     for target_address in (starting_address..top_address).step_by(steps as usize) {
+    //         let pages_left = (top_address - target_address) / bininfo.flash_page_size;
+
+    //         let num_pages = if pages_left < max_pages {
+    //             pages_left
+    //         } else {
+    //             max_pages
+    //         };
+    //         let chk: ChksumPagesResult = ChksumPages {
+    //             target_address,
+    //             num_pages,
+    //         }
+    //         .send(&d)?;
+    //         println!("{:?}", chk);
+    //     }
     // }
-    // .send(&d)?;
-    // println!("{:?}", words);
+    let _ = ResetIntoApp {}.send(&d)?;
+
+    // {
+    //     //read words
+    //     //max? just use flash page size for now
+
+    //     let mut device_binary = vec![];
+    //     let bytes = bininfo.flash_page_size; //256
+    //     for target_address in (starting_address..top_address).step_by(bytes as usize) {
+    //         let bytes_left = top_address - target_address;
+
+    //         let num_words = if bytes_left < bytes {
+    //             bytes_left / 32
+    //         } else {
+    //             bytes / 32
+    //         };
+    //         println!("{:?}", bytes_left);
+    //         println!("{:02X?} {:?}", target_address, num_words);
+
+    //         let res: ReadWordsResult = ReadWords {
+    //             target_address,
+    //             num_words,
+    //         }
+    //         .send(&d)?;
+
+    //         device_binary.extend_from_slice(&res.words[..]);
+    //     }
+    // }
 
     // let _ = WriteWords {
     //     target_addr: 0,
     //     num_words: 1,
     //     words: vec![],
-    // }
     // .send(&d)?;
 
     Ok(())
