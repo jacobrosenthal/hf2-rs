@@ -426,19 +426,27 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
 fn transfer(id: CommandId, d: &hidapi::HidDevice, data: &[u8]) -> Result<Vec<u8>, Error> {
     let mut seq: u16 = 1;
 
-    let buffer = &mut [0; 68];
+    let buffer = &mut [0_u8; 264];
 
     let mut offset = 1;
 
     buffer.gwrite_with(id as u32, &mut offset, LE)?;
     buffer.gwrite_with(seq, &mut offset, LE)?;
-    buffer.gwrite_with(0, &mut offset, LE)?;
-    buffer.gwrite_with(0, &mut offset, LE)?;
+    buffer.gwrite_with(0_u8, &mut offset, LE)?;
+    buffer.gwrite_with(0_u8, &mut offset, LE)?;
 
-    buffer[0] = (PacketType::Final as u8) << 6 | offset as u8;
+    // println!("{:?} {:?}", offset, data.len());
 
-    //todo, dont
+    // data is at least a single byte
+    // we dont include header in length, so offset -1
+    // smallest packet is then 1 byte header, 8 length + 1 user = 10 buffer
+    let len: usize = offset - 1 + data.len();
+
+    buffer[0] = (PacketType::Final as u8) << 6 | len as u8;
+
     let first_and_last = [&buffer[..offset], &data[..]].concat();
+
+    // println!("transmitting: {:02X?}", &first_and_last[..]);
 
     d.write(first_and_last.as_slice())?;
 
@@ -457,12 +465,15 @@ fn transfer(id: CommandId, d: &hidapi::HidDevice, data: &[u8]) -> Result<Vec<u8>
     let mut ptype = PacketType::Inner;
     while ptype == PacketType::Inner {
         d.read(buffer)?;
-        println!("Receive response: {:02X?}", &buffer[..]);
 
         ptype = PacketType::try_from(buffer[0] >> 6)?;
         let len: usize = (buffer[0] & 0x3F) as usize;
+        // println!("header: {:02X?}", &buffer[0]);
+        // println!("len: {:?}", len);
+        // println!("ptype: {:?}", ptype);
+        // println!("Receive response: {:02X?}", &buffer[1..=len]);
 
-        //skip the header byte
+        //skip the header byte and strip excess bytes remote is allowed to send
         bitsnbytes.extend_from_slice(&buffer[1..=len]);
     }
 
