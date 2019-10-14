@@ -22,7 +22,7 @@ fn main() -> Result<(), Error> {
         Cmd::bininfo => bininfo(&d)?,
         Cmd::dmesg => dmesg(&d)?,
         Cmd::flash { file, address } => flash(file, address, &d)?,
-        _ => {}
+        Cmd::verify { file, address } => verify(file, address, &d)?,
     }
 
     Ok(())
@@ -119,6 +119,65 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
 
     println!("Success");
     let _ = ResetIntoApp {}.send(&d)?;
+    Ok(())
+}
+
+fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
+    let bininfo: BinInfoResult = BinInfo {}.send(&d)?;
+
+    if bininfo.mode != BinInfoMode::Bootloader {
+        let _ = StartFlash {}.send(&d)?;
+    }
+
+    //shouldnt there be a chunking interator for this?
+    let mut f = File::open(file)?;
+    let mut binary = Vec::new();
+    f.read_to_end(&mut binary)?;
+
+    //pad zeros to page size
+    let padded_num_pages = (binary.len() as f64 / bininfo.flash_page_size as f64).ceil() as u32;
+    let padded_size = padded_num_pages * bininfo.flash_page_size;
+    for _i in 0..(padded_size as usize - binary.len()) {
+        binary.push(0x0);
+    }
+
+    // get checksums of existing pages
+    let top_address = address + padded_size as u32;
+    let max_pages = bininfo.max_message_size / 2 - 2;
+    let steps = max_pages * bininfo.flash_page_size;
+    let mut device_checksums = vec![];
+
+    for target_address in (address..top_address).step_by(steps as usize) {
+        let pages_left = (top_address - target_address) / bininfo.flash_page_size;
+
+        let num_pages = if pages_left < max_pages {
+            pages_left
+        } else {
+            max_pages
+        };
+        let chk: ChksumPagesResult = ChksumPages {
+            target_address,
+            num_pages,
+        }
+        .send(&d)?;
+        device_checksums.extend_from_slice(&chk.chksums[..]);
+    }
+
+    let mut binary_checksums = vec![];
+
+    for page in binary.chunks(bininfo.flash_page_size as usize) {
+        let mut digest1 = crc16::Digest::new_custom(crc16::X25, 0u16, 0u16, crc::CalcType::Normal);
+        digest1.write(&page);
+
+        binary_checksums.push(digest1.sum16());
+    }
+
+    assert_eq!(
+        &binary_checksums[..binary_checksums.len() - 1],
+        &device_checksums[..binary_checksums.len() - 1]
+    );
+    println!("Success");
+
     Ok(())
 }
 
