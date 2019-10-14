@@ -1,11 +1,20 @@
 [package]
-name = "dfu"
+name = "uf2"
 version = "0.1.0"
-authors = ["Jacob Rosenthal <jacobrosenthal@gmail.com>"]
+authors = ["Jacob Rosenthal <@jacobrosenthal>"]
 edition = "2018"
+description = "Microsoft HID Flashing Format"
+repository = "https://github.com/jacobrosenthal/uf2-rs"
+keywords = ["hid", "pygamer", "flash"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "uf2"
+path = "src/lib.rs"
+
+[[bin]]
+name = "uf2"
+path = "src/bin.rs"
 
 
 [patch.crates-io]
@@ -14,9 +23,9 @@ crc = { git = 'https://github.com/mrhooray/crc-rs' }
 
 
 [dependencies]
+structopt = { version = "0.3"}
 hidapi = "0.5.2"
 scroll = { version = "0.10.0", features = ["derive"] }
 crc = "1.0.0"
-byteorder = "1.3.2"
 
 

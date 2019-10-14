@@ -1,13 +1,11 @@
 ///https://github.com/Microsoft/uf2/blob/master/hf2.md
-use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use core::convert::TryFrom;
-use crc::{self, crc16, Hasher16};
-use hidapi::HidApi;
 use scroll::{ctx, Pread, Pwrite, LE};
-use std::fs::File;
+mod mock;
+use mock::HidMockable;
 
 #[derive(Debug, PartialEq)]
-enum BinInfoMode {
+pub enum BinInfoMode {
     //bootloader, and thus flashing of user-space programs is allowed
     Bootloader = 0x0001,
     //user-space mode. It also returns the size of flash page size (flashing needs to be done on page-by-page basis), and the maximum size of message. It is always the case that max_message_size >= flash_page_size + 64.
@@ -26,8 +24,8 @@ impl TryFrom<u32> for BinInfoMode {
     }
 }
 
-// This command states the current mode of the device:
-struct BinInfo {}
+/// This command states the current mode of the device:
+pub struct BinInfo {}
 
 impl Commander<BinInfoResult> for BinInfo {
     fn send(&self, d: &hidapi::HidDevice) -> Result<BinInfoResult, Error> {
@@ -48,16 +46,17 @@ impl Commander<BinInfoResult> for BinInfo {
 }
 
 #[derive(Debug, PartialEq)]
-struct BinInfoResult {
-    mode: BinInfoMode, //    uint32_t mode;
-    flash_page_size: u32,
-    flash_num_pages: u32,
-    max_message_size: u32,
-    family_id: FamilyId, // optional?
+pub struct BinInfoResult {
+    pub mode: BinInfoMode, //    uint32_t mode;
+    pub flash_page_size: u32,
+    pub flash_num_pages: u32,
+    pub max_message_size: u32,
+    pub family_id: FamilyId, // optional?
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone, PartialEq)]
-enum FamilyId {
+pub enum FamilyId {
     ATSAMD21,
     ATSAMD51,
     NRF52840,
@@ -71,13 +70,13 @@ enum FamilyId {
 impl From<u32> for FamilyId {
     fn from(val: u32) -> Self {
         match val {
-            0x68ed2b88 => Self::ATSAMD21,
-            0x55114460 => Self::ATSAMD51,
-            0x1b57745f => Self::NRF52840,
-            0x5ee21072 => Self::STM32F103,
-            0x57755a57 => Self::STM32F401,
-            0x16573617 => Self::ATMEGA32,
-            0x5a18069b => Self::CYPRESS_FX2,
+            0x68ed_2b88 => Self::ATSAMD21,
+            0x5511_4460 => Self::ATSAMD51,
+            0x1b57_745f => Self::NRF52840,
+            0x5ee2_1072 => Self::STM32F103,
+            0x5775_5a57 => Self::STM32F401,
+            0x1657_3617 => Self::ATMEGA32,
+            0x5a18_069b => Self::CYPRESS_FX2,
             _ => Self::UNKNOWN(val),
         }
     }
@@ -117,8 +116,8 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
     }
 }
 
-// Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
-struct Info {}
+/// Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
+pub struct Info {}
 impl Commander<InfoResult> for Info {
     fn send(&self, d: &hidapi::HidDevice) -> Result<InfoResult, Error> {
         let command = Command::new(0x0002, 0, vec![]);
@@ -127,6 +126,10 @@ impl Commander<InfoResult> for Info {
 
         let rsp = rx(d)?;
 
+        if rsp.status != CommandResponseStatus::Success {
+            return Err(Error::MalformedRequest);
+        }
+
         let res: InfoResult = (rsp.data.as_slice()).pread_with::<InfoResult>(0, LE)?;
 
         Ok(res)
@@ -134,8 +137,8 @@ impl Commander<InfoResult> for Info {
 }
 
 #[derive(Debug, PartialEq)]
-struct InfoResult {
-    info: String,
+pub struct InfoResult {
+    pub info: String,
 }
 impl CommanderResult for InfoResult {}
 
@@ -153,10 +156,10 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResult {
     }
 }
 
-//Write a single page of flash memory. No Result.
-struct WriteFlashPage {
-    target_address: u32,
-    data: Vec<u8>,
+///Write a single page of flash memory. No Result.
+pub struct WriteFlashPage {
+    pub target_address: u32,
+    pub data: Vec<u8>,
 }
 
 impl Commander<NoResult> for WriteFlashPage {
@@ -181,10 +184,10 @@ impl Commander<NoResult> for WriteFlashPage {
     }
 }
 
-//Compute checksum of a number of pages. Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
-struct ChksumPages {
-    target_address: u32,
-    num_pages: u32,
+///Compute checksum of a number of pages. Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
+pub struct ChksumPages {
+    pub target_address: u32,
+    pub num_pages: u32,
 }
 
 impl Commander<ChksumPagesResult> for ChksumPages {
@@ -202,6 +205,10 @@ impl Commander<ChksumPagesResult> for ChksumPages {
 
         let rsp = rx(d)?;
 
+        if rsp.status != CommandResponseStatus::Success {
+            return Err(Error::MalformedRequest);
+        }
+
         let res: ChksumPagesResult =
             (rsp.data.as_slice()).pread_with::<ChksumPagesResult>(0, LE)?;
 
@@ -209,10 +216,10 @@ impl Commander<ChksumPagesResult> for ChksumPages {
     }
 }
 
-//Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
+///Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
 #[derive(Debug, PartialEq)]
-struct ChksumPagesResult {
-    chksums: Vec<u16>,
+pub struct ChksumPagesResult {
+    pub chksums: Vec<u16>,
 }
 impl CommanderResult for ChksumPagesResult {}
 
@@ -228,8 +235,8 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ChksumPagesResult {
     }
 }
 
-//Reset the device into user-space app. Usually, no response at all will arrive for this command.
-struct ResetIntoApp {}
+///Reset the device into user-space app. Usually, no response at all will arrive for this command.
+pub struct ResetIntoApp {}
 impl Commander<NoResult> for ResetIntoApp {
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
         let command = Command::new(0x0003, 0, vec![]);
@@ -240,8 +247,8 @@ impl Commander<NoResult> for ResetIntoApp {
     }
 }
 
-//Reset the device into bootloader, usually for flashing. Usually, no response at all will arrive for this command.
-struct ResetIntoBootloader {}
+///Reset the device into bootloader, usually for flashing. Usually, no response at all will arrive for this command.
+pub struct ResetIntoBootloader {}
 impl Commander<NoResult> for ResetIntoBootloader {
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
         let command = Command::new(0x0004, 0, vec![]);
@@ -252,8 +259,8 @@ impl Commander<NoResult> for ResetIntoBootloader {
     }
 }
 
-// When issued in bootloader mode, it has no effect. In user-space mode it causes handover to bootloader. A BININFO command can be issued to verify that.
-struct StartFlash {}
+/// When issued in bootloader mode, it has no effect. In user-space mode it causes handover to bootloader. A BININFO command can be issued to verify that.
+pub struct StartFlash {}
 impl Commander<NoResult> for StartFlash {
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
         let command = Command::new(0x0005, 0, vec![]);
@@ -266,8 +273,8 @@ impl Commander<NoResult> for StartFlash {
     }
 }
 
-//Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
-struct ReadWords {
+///Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
+pub struct ReadWords {
     target_address: u32,
     num_words: u32,
 }
@@ -287,6 +294,10 @@ impl Commander<ReadWordsResult> for ReadWords {
 
         let rsp = rx(d)?;
 
+        if rsp.status != CommandResponseStatus::Success {
+            return Err(Error::MalformedRequest);
+        }
+
         let res: ReadWordsResult = (rsp.data.as_slice()).pread_with::<ReadWordsResult>(0, LE)?;
 
         Ok(res)
@@ -294,8 +305,8 @@ impl Commander<ReadWordsResult> for ReadWords {
 }
 
 #[derive(Debug, PartialEq)]
-struct ReadWordsResult {
-    words: Vec<u32>,
+pub struct ReadWordsResult {
+    pub words: Vec<u32>,
 }
 impl CommanderResult for ReadWordsResult {}
 
@@ -311,11 +322,11 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResult {
     }
 }
 
-//Dual of READ WORDS, with the same constraints. No Result.
-struct WriteWords {
-    target_address: u32,
-    num_words: u32,
-    words: Vec<u32>,
+///Dual of READ WORDS, with the same constraints. No Result.
+pub struct WriteWords {
+    pub target_address: u32,
+    pub num_words: u32,
+    pub words: Vec<u32>,
 }
 
 impl Commander<NoResult> for WriteWords {
@@ -341,8 +352,8 @@ impl Commander<NoResult> for WriteWords {
     }
 }
 
-//Return internal log buffer if any. The result is a character array.
-struct Dmesg {}
+///Return internal log buffer if any. The result is a character array.
+pub struct Dmesg {}
 
 impl Commander<DmesgResult> for Dmesg {
     fn send(&self, d: &hidapi::HidDevice) -> Result<DmesgResult, Error> {
@@ -352,6 +363,10 @@ impl Commander<DmesgResult> for Dmesg {
 
         let rsp = rx(d)?;
 
+        if rsp.status != CommandResponseStatus::Success {
+            return Err(Error::MalformedRequest);
+        }
+
         let res: DmesgResult = (rsp.data.as_slice()).pread_with::<DmesgResult>(0, LE)?;
 
         Ok(res)
@@ -359,8 +374,8 @@ impl Commander<DmesgResult> for Dmesg {
 }
 
 #[derive(Debug, PartialEq)]
-struct DmesgResult {
-    logs: String,
+pub struct DmesgResult {
+    pub logs: String,
 }
 impl CommanderResult for DmesgResult {}
 
@@ -378,23 +393,23 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for DmesgResult {
     }
 }
 
-trait CommanderResult {}
+pub trait CommanderResult {}
 
-trait Commander<RES: CommanderResult> {
+pub trait Commander<RES: CommanderResult> {
     fn send(&self, d: &hidapi::HidDevice) -> Result<RES, Error>;
 }
 
-struct NoResult {}
+pub struct NoResult {}
 impl CommanderResult for NoResult {}
 
 #[derive(Debug, PartialEq)]
 struct CommandResponse {
-    //arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
+    ///arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
     tag: u16,
     status: CommandResponseStatus, //    uint8_t status;
-
-    //additional information In case of non-zero status
+    ///additional information In case of non-zero status
     status_info: u8, // optional?
+    ///LE bytes
     data: Vec<u8>,
 }
 
@@ -475,12 +490,15 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
 }
 
 struct Command {
+    ///Command ID
     id: u32,
-    //arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
+    ///arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
     tag: u16,
-    //The two reserved bytes in the command should be sent as zero and ignored by the device
+    ///reserved bytes in the command should be sent as zero and ignored by the device
     _reserved0: u8,
+    ///reserved bytes in the command should be sent as zero and ignored by the device
     _reserved1: u8,
+    ///LE bytes
     data: Vec<u8>,
 }
 impl Command {
@@ -495,6 +513,7 @@ impl Command {
     }
 }
 
+///Transmit a Command, command.data should already have been LE converted
 fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
     //Packets are up to 64 bytes long
     let buffer = &mut [0_u8; 64];
@@ -502,7 +521,7 @@ fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
     // header is 1
     let mut offset = 1;
 
-    //command struct is 8
+    //command struct is 8 bytes
     buffer.gwrite_with(cmd.id, &mut offset, LE)?;
     buffer.gwrite_with(cmd.tag, &mut offset, LE)?;
     buffer.gwrite_with(cmd._reserved0, &mut offset, LE)?;
@@ -530,7 +549,7 @@ fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
 
     //send the rest in chunks up to 63
     for chunk in cmd.data[count..].chunks(64 - 1 as usize) {
-        count = count + chunk.len();
+        count += chunk.len();
 
         if count == cmd.data.len() {
             buffer[0] = (PacketType::Final as u8) << 6 | chunk.len() as u8;
@@ -542,13 +561,14 @@ fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
             buffer[i + 1] = *val
         }
 
-        // println!("tx: {:02X?}", &buffer[..(chunk.len() + 1));
+        // println!("tx: {:02X?}", &buffer[..=chunk.len()));
 
-        d.my_write(&buffer[..(chunk.len() + 1)])?;
+        d.my_write(&buffer[..=chunk.len()])?;
     }
     Ok(())
 }
 
+///Receive a CommandResponse, CommandResponse.data is not interpreted in any way.
 fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
     let mut bitsnbytes: Vec<u8> = vec![];
 
@@ -581,7 +601,7 @@ fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum Error {
+pub enum Error {
     Arguments,
     Parse,
     MalformedRequest,
@@ -614,138 +634,10 @@ impl From<std::io::Error> for Error {
     }
 }
 
-fn main() -> Result<(), Error> {
-    let api = HidApi::new().expect("Couldn't find system usb");
-
-    let d = api.open(0x239A, 0x003D).expect("Couldn't find usb device");
-
-    let bininfo: BinInfoResult = BinInfo {}.send(&d)?;
-    println!(
-        "{:?} {:?}kb",
-        bininfo,
-        bininfo.flash_num_pages * bininfo.flash_page_size / 1024
-    );
-
-    let info: InfoResult = Info {}.send(&d)?;
-    println!("{:?}", info);
-
-    if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&d)?;
-    }
-
-    let starting_address = 0x4000; //todo samd51, get out of the binary or from an arg
-    let top_address = bininfo.flash_num_pages * bininfo.flash_page_size;
-
-    let mut binary_checksums = vec![];
-
-    use std::io::Read;
-
-    let mut f = File::open("./ferris_img.bin")?;
-    let mut binary = Vec::new();
-    //shouldnt there be a chunking interator for htis?
-    f.read_to_end(&mut binary)?;
-
-    //sigh, cant enumerate, right?
-    let mut page_index = 0;
-    for page in binary.chunks(bininfo.flash_page_size as usize) {
-        let mut digest1 = crc16::Digest::new_custom(crc16::X25, 0u16, 0u16, crc::CalcType::Normal);
-        digest1.write(&page);
-        let chksum = digest1.sum16();
-        binary_checksums.push(chksum);
-
-        let target_address = starting_address + bininfo.flash_page_size * page_index;
-        // println!("{:04X?}", target_address);
-        // println!("{:?}", page.len());
-        // println!("{:02X?}", page);
-        let _ = WriteFlashPage {
-            target_address,
-            data: page.to_vec(),
-        }
-        .send(&d)?;
-
-        page_index += 1;
-    }
-
-    let mut device_checksums = vec![];
-    //checksums
-    let max_pages = bininfo.max_message_size / 2 - 2;
-    let steps = max_pages * bininfo.flash_page_size;
-
-    for target_address in (starting_address..top_address).step_by(steps as usize) {
-        let pages_left = (top_address - target_address) / bininfo.flash_page_size;
-
-        let num_pages = if pages_left < max_pages {
-            pages_left
-        } else {
-            max_pages
-        };
-        let chk: ChksumPagesResult = ChksumPages {
-            target_address,
-            num_pages,
-        }
-        .send(&d)?;
-        device_checksums.extend_from_slice(&chk.chksums[..]);
-    }
-
-    //todo last byte of binary doesnt match? padding or something?
-    assert_eq!(
-        &binary_checksums[..binary_checksums.len() - 1],
-        &device_checksums[..binary_checksums.len() - 1]
-    );
-
-    let _ = ResetIntoApp {}.send(&d)?;
-
-    //todo still not matching
-    //read words
-    //max? just use flash page size for now
-
-    // let mut device_binary = vec![];
-    // let bytes = bininfo.flash_page_size; //256
-    // for target_address in (starting_address..top_address).step_by(bytes as usize) {
-    //     let bytes_left = top_address - target_address;
-
-    //     let num_words = if bytes_left < bytes {
-    //         bytes_left / 32
-    //     } else {
-    //         bytes / 32
-    //     };
-    //     // println!("{:?}", bytes_left);
-    //     // println!("{:04X?} {:?}", target_address, num_words);
-
-    //     let res: ReadWordsResult = ReadWords {
-    //         target_address,
-    //         num_words,
-    //     }
-    //     .send(&d)?;
-
-    //     device_binary.extend_from_slice(&res.words[..]);
-    // }
-
-    // use std::io::{BufWriter, Write};
-
-    // let f = File::create("CURRENT.bin")?;
-    // let mut f = BufWriter::new(f);
-    // for double in device_binary.as_slice() {
-    //     f.write_all(&double.to_le_bytes())?;
-    // }
-
-    //todo test
-    // let _ = WriteWords {
-    //     target_addr: 0,
-    //     num_words: 1,
-    //     words: vec![],
-    // .send(&d)?;
-
-    // todo, test. not supported on my board
-    // let dmesg: DmesgResult = Dmesg {}.send(&d)?;
-    // println!("{:?}", dmesg);
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mock::MyMock;
 
     #[test]
     fn send_fragmented() {
@@ -868,7 +760,7 @@ mod tests {
         };
 
         let mock = MyMock {
-            reader: reader,
+            reader,
             writer: |_v| 0,
         };
 
@@ -894,59 +786,12 @@ mod tests {
             0x61, 0x6D, 0x65, 0x72, 0x2D, 0x4D, 0x34, 0x0D, 0x0A,
         ];
 
-        let infoResult = InfoResult {
+        let info_result = InfoResult {
 info: "UF2 Bootloader v3.6.0 SFHWRO\r\nModel: PyGamer\r\nBoard-ID: SAMD51J19A-PyGamer-M4\r\n".into()
         };
 
         let res: InfoResult = (data.as_slice()).pread_with::<InfoResult>(0, LE).unwrap();
 
-        assert_eq!(res, infoResult);
-    }
-}
-
-use hidapi::HidDevice;
-use hidapi::HidResult;
-
-struct MyMock<R, W>
-where
-    R: Fn() -> Vec<u8>,
-    W: Fn(&[u8]) -> usize,
-{
-    reader: R,
-    writer: W,
-}
-
-trait HidMockable {
-    fn my_write(&self, data: &[u8]) -> HidResult<usize>;
-    fn my_read(&self, buf: &mut [u8]) -> HidResult<usize>;
-}
-
-impl HidMockable for HidDevice {
-    fn my_write(&self, data: &[u8]) -> HidResult<usize> {
-        self.write(data)
-    }
-    fn my_read(&self, buf: &mut [u8]) -> HidResult<usize> {
-        self.read(buf)
-    }
-}
-
-impl<R, W> HidMockable for MyMock<R, W>
-where
-    R: Fn() -> Vec<u8>,
-    W: Fn(&[u8]) -> usize,
-{
-    fn my_write(&self, data: &[u8]) -> HidResult<usize> {
-        let len = (&self.writer)(data);
-
-        Ok(len)
-    }
-    fn my_read(&self, buf: &mut [u8]) -> HidResult<usize> {
-        let data = (self.reader)();
-
-        for (i, val) in data.iter().enumerate() {
-            buf[i] = *val
-        }
-
-        Ok(data.len())
+        assert_eq!(res, info_result);
     }
 }
