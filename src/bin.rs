@@ -11,9 +11,37 @@ fn main() -> Result<(), Error> {
 
     let api = HidApi::new().expect("Couldn't find system usb");
 
-    let d = api
-        .open(args.vid, args.pid)
-        .expect("Couldn't find usb device");
+    let d = if let (Some(v), Some(p)) = (args.vid, args.pid) {
+        api.open(v, p)
+            .expect("Are you sure device is plugged in and in uf2 mode?")
+    } else {
+        println!("no vid/pid provided..");
+
+        let mut device: Option<HidDevice> = None;
+
+        for device_info in api.devices() {
+            println!(
+                "trying {:?} {:?}",
+                device_info
+                    .manufacturer_string
+                    .as_ref()
+                    .unwrap_or(&"".to_string()),
+                device_info
+                    .product_string
+                    .as_ref()
+                    .unwrap_or(&"".to_string())
+            );
+
+            if let Ok(d) = device_info.open_device(&api) {
+                let info = Info {}.send(&d);
+                if info.is_ok() {
+                    device = Some(d);
+                    break;
+                }
+            }
+        }
+        device.expect("Are you sure device is plugged in and in uf2 mode?")
+    };
 
     match args.cmd {
         Cmd::resetIntoApp => reset_into_bootloader(&d)?,
@@ -237,7 +265,7 @@ struct Opt {
     cmd: Cmd,
 
     #[structopt(short, parse(try_from_str = parse_hex_16))]
-    pid: u16,
+    pid: Option<u16>,
     #[structopt(short, parse(try_from_str = parse_hex_16))]
-    vid: u16,
+    vid: Option<u16>,
 }
