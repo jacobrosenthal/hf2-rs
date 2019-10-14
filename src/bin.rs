@@ -63,11 +63,6 @@ fn dmesg(d: &HidDevice) -> Result<(), Error> {
 
 fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
     let bininfo: BinInfoResult = BinInfo {}.send(&d)?;
-    println!(
-        "{:?} {:?}kb",
-        bininfo,
-        bininfo.flash_num_pages * bininfo.flash_page_size / 1024
-    );
 
     if bininfo.mode != BinInfoMode::Bootloader {
         let _ = StartFlash {}.send(&d)?;
@@ -79,7 +74,7 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
 
     let mut f = File::open(file)?;
     let mut binary = Vec::new();
-    //shouldnt there be a chunking interator for htis?
+    //shouldnt there be a chunking interator for this?
     f.read_to_end(&mut binary)?;
 
     for (page_index, page) in binary.chunks(bininfo.flash_page_size as usize).enumerate() {
@@ -89,9 +84,6 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         binary_checksums.push(chksum);
 
         let target_address = address + bininfo.flash_page_size * page_index as u32;
-        // println!("{:04X?}", target_address);
-        // println!("{:?}", page.len());
-        // println!("{:02X?}", page);
         let _ = WriteFlashPage {
             target_address,
             data: page.to_vec(),
@@ -126,6 +118,7 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         &device_checksums[..binary_checksums.len() - 1]
     );
 
+    println!("Success");
     let _ = ResetIntoApp {}.send(&d)?;
     Ok(())
 }
@@ -146,7 +139,6 @@ fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
 }
 
 #[allow(non_camel_case_types)]
-#[allow(non_snake_case)]
 #[derive(StructOpt, Debug, PartialEq)]
 pub enum Cmd {
     ///Reset the device into user-space app.
@@ -162,6 +154,7 @@ pub enum Cmd {
 
     ///Return internal log buffer if any. The result is a character array.
     dmesg,
+
     /// flash
     flash {
         #[structopt(short = "f")]
@@ -179,8 +172,6 @@ pub enum Cmd {
     },
 }
 
-#[allow(non_camel_case_types)]
-#[allow(non_snake_case)]
 #[derive(Debug, StructOpt)]
 #[structopt(name = "uf2", about = "Microsoft HID Flashing Format")]
 struct Opt {
