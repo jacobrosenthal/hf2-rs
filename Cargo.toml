@@ -10,11 +10,13 @@ edition = "2018"
 
 [patch.crates-io]
 scroll = { git = 'https://github.com/m4b/scroll', features = ["derive"] }
+crc = { git = 'https://github.com/mrhooray/crc-rs' }
 
 
 [dependencies]
-# rusb = "0.5.1"
 hidapi = "0.5.2"
-byteorder = "1.3.2"
 scroll = { version = "0.10.0", features = ["derive"] }
+crc = "1.0.0"
+byteorder = "1.3.2"
+
 

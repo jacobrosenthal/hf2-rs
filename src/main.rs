@@ -1,34 +1,10 @@
 ///https://github.com/Microsoft/uf2/blob/master/hf2.md
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use core::convert::TryFrom;
-use crc::{crc16, Hasher16};
+use crc::{self, crc16, Hasher16};
 use hidapi::HidApi;
 use scroll::{ctx, Pread, Pwrite, LE};
 use std::fs::File;
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-enum CommandId {
-    // This command states the current mode of the device:
-    BinInfo = 0x0001,
-    // Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
-    Info = 0x0002,
-    //Reset the device into user-space app. Usually, no response at all will arrive for this command.
-    ResetIntoApp = 0x0003,
-    //Reset the device into bootloader, usually for flashing. Usually, no response at all will arrive for this command.
-    ResetIntoBootloader = 0x0004,
-    // When issued in bootloader mode, it has no effect. In user-space mode it causes handover to bootloader. A BININFO command can be issued to verify that.
-    StartFlash = 0x0005,
-    //Write a single page of flash memory. No Result.
-    WriteFlashPage = 0x0006,
-    //Compute checksum of a number of pages. Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
-    Checksum = 0x0007,
-    //Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_address must be suitably aligned. This is to support reading of special IO regions.
-    ReadWords = 0x0008,
-    //Dual of READ WORDS, with the same constraints. No Result.
-    WriteWords = 0x0009,
-    //Return internal log buffer if any. The result is a character array.
-    Dmesg = 0x0010,
-}
 
 #[derive(Debug, PartialEq)]
 enum BinInfoMode {
@@ -55,22 +31,58 @@ struct BinInfo {}
 
 impl Commander<BinInfoResult> for BinInfo {
     fn send(&self, d: &hidapi::HidDevice) -> Result<BinInfoResult, Error> {
-        let bitsnbytes = transfer(CommandId::BinInfo, d, &[0])?;
+        let command = Command::new(0x0001, 0, vec![]);
 
-        let res: BinInfoResult = (bitsnbytes.as_slice()).pread_with::<BinInfoResult>(0, LE)?;
+        xmit(command, d)?;
+
+        let rsp = rx(d)?;
+
+        if rsp.status != CommandResponseStatus::Success {
+            return Err(Error::MalformedRequest);
+        }
+
+        let res: BinInfoResult = (rsp.data.as_slice()).pread_with::<BinInfoResult>(0, LE)?;
 
         Ok(res)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct BinInfoResult {
     mode: BinInfoMode, //    uint32_t mode;
     flash_page_size: u32,
     flash_num_pages: u32,
     max_message_size: u32,
-    family_id: Option<u32>, // optional
+    family_id: FamilyId, // optional?
 }
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum FamilyId {
+    ATSAMD21,
+    ATSAMD51,
+    NRF52840,
+    STM32F103,
+    STM32F401,
+    ATMEGA32,
+    CYPRESS_FX2,
+    UNKNOWN(u32),
+}
+
+impl From<u32> for FamilyId {
+    fn from(val: u32) -> Self {
+        match val {
+            0x68ed2b88 => Self::ATSAMD21,
+            0x55114460 => Self::ATSAMD51,
+            0x1b57745f => Self::NRF52840,
+            0x5ee21072 => Self::STM32F103,
+            0x57755a57 => Self::STM32F401,
+            0x16573617 => Self::ATMEGA32,
+            0x5a18069b => Self::CYPRESS_FX2,
+            _ => Self::UNKNOWN(val),
+        }
+    }
+}
+
 impl CommanderResult for BinInfoResult {}
 
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
@@ -90,11 +102,7 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
         let max_message_size = this.gread_with::<u32>(&mut offset, le)?;
 
         //todo, not sure if optional means it would be 0, or would not be included at all
-        let family_id = if offset < this.len() {
-            Some(this.gread_with::<u32>(&mut offset, le)?)
-        } else {
-            None
-        };
+        let family_id: FamilyId = this.gread_with::<u32>(&mut offset, le)?.into();
 
         Ok((
             BinInfoResult {
@@ -113,15 +121,19 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
 struct Info {}
 impl Commander<InfoResult> for Info {
     fn send(&self, d: &hidapi::HidDevice) -> Result<InfoResult, Error> {
-        let bitsnbytes = transfer(CommandId::Info, d, &[0])?;
+        let command = Command::new(0x0002, 0, vec![]);
 
-        let res: InfoResult = (bitsnbytes.as_slice()).pread_with::<InfoResult>(0, LE)?;
+        xmit(command, d)?;
+
+        let rsp = rx(d)?;
+
+        let res: InfoResult = (rsp.data.as_slice()).pread_with::<InfoResult>(0, LE)?;
 
         Ok(res)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct InfoResult {
     info: String,
 }
@@ -159,7 +171,11 @@ impl Commander<NoResult> for WriteFlashPage {
             data.gwrite_with(i, &mut offset, LE)?;
         }
 
-        let _ = transfer(CommandId::WriteFlashPage, d, &data[..])?;
+        let command = Command::new(0x0006, 0, data);
+
+        xmit(command, d)?;
+
+        let _ = rx(d)?;
 
         Ok(NoResult {})
     }
@@ -180,17 +196,21 @@ impl Commander<ChksumPagesResult> for ChksumPages {
         data.gwrite_with(self.target_address, &mut offset, LE)?;
         data.gwrite_with(self.num_pages, &mut offset, LE)?;
 
-        let bitsnbytes = transfer(CommandId::Checksum, d, &data[..])?;
+        let command = Command::new(0x0007, 0, data.to_vec());
+
+        xmit(command, d)?;
+
+        let rsp = rx(d)?;
 
         let res: ChksumPagesResult =
-            (bitsnbytes.as_slice()).pread_with::<ChksumPagesResult>(0, LE)?;
+            (rsp.data.as_slice()).pread_with::<ChksumPagesResult>(0, LE)?;
 
         Ok(res)
     }
 }
 
 //Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct ChksumPagesResult {
     chksums: Vec<u16>,
 }
@@ -212,7 +232,9 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ChksumPagesResult {
 struct ResetIntoApp {}
 impl Commander<NoResult> for ResetIntoApp {
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
-        let _ = transfer(CommandId::ResetIntoApp, d, &[0])?;
+        let command = Command::new(0x0003, 0, vec![]);
+
+        xmit(command, d)?;
 
         Ok(NoResult {})
     }
@@ -222,7 +244,9 @@ impl Commander<NoResult> for ResetIntoApp {
 struct ResetIntoBootloader {}
 impl Commander<NoResult> for ResetIntoBootloader {
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
-        let _ = transfer(CommandId::ResetIntoBootloader, d, &[0])?;
+        let command = Command::new(0x0004, 0, vec![]);
+
+        xmit(command, d)?;
 
         Ok(NoResult {})
     }
@@ -232,7 +256,11 @@ impl Commander<NoResult> for ResetIntoBootloader {
 struct StartFlash {}
 impl Commander<NoResult> for StartFlash {
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
-        let _ = transfer(CommandId::StartFlash, d, &[0])?;
+        let command = Command::new(0x0005, 0, vec![]);
+
+        xmit(command, d)?;
+
+        let _ = rx(d)?;
 
         Ok(NoResult {})
     }
@@ -253,15 +281,19 @@ impl Commander<ReadWordsResult> for ReadWords {
         data.gwrite_with(self.target_address, &mut offset, LE)?;
         data.gwrite_with(self.num_words, &mut offset, LE)?;
 
-        let bitsnbytes = transfer(CommandId::ReadWords, d, &data[..])?;
+        let command = Command::new(0x0008, 0, data.to_vec());
 
-        let res: ReadWordsResult = (bitsnbytes.as_slice()).pread_with::<ReadWordsResult>(0, LE)?;
+        xmit(command, d)?;
+
+        let rsp = rx(d)?;
+
+        let res: ReadWordsResult = (rsp.data.as_slice()).pread_with::<ReadWordsResult>(0, LE)?;
 
         Ok(res)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct ReadWordsResult {
     words: Vec<u32>,
 }
@@ -299,7 +331,11 @@ impl Commander<NoResult> for WriteWords {
             data.gwrite_with(i, &mut offset, LE)?;
         }
 
-        let _ = transfer(CommandId::WriteWords, d, &data[..offset])?;
+        let command = Command::new(0x0009, 0, data.to_vec());
+
+        xmit(command, d)?;
+
+        let _ = rx(d)?;
 
         Ok(NoResult {})
     }
@@ -310,15 +346,19 @@ struct Dmesg {}
 
 impl Commander<DmesgResult> for Dmesg {
     fn send(&self, d: &hidapi::HidDevice) -> Result<DmesgResult, Error> {
-        let bitsnbytes = transfer(CommandId::Dmesg, d, &[0])?;
+        let command = Command::new(0x0010, 0, vec![]);
 
-        let res: DmesgResult = (bitsnbytes.as_slice()).pread_with::<DmesgResult>(0, LE)?;
+        xmit(command, d)?;
+
+        let rsp = rx(d)?;
+
+        let res: DmesgResult = (rsp.data.as_slice()).pread_with::<DmesgResult>(0, LE)?;
 
         Ok(res)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct DmesgResult {
     logs: String,
 }
@@ -347,7 +387,7 @@ trait Commander<RES: CommanderResult> {
 struct NoResult {}
 impl CommanderResult for NoResult {}
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct CommandResponse {
     //arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
     tag: u16,
@@ -355,7 +395,7 @@ struct CommandResponse {
 
     //additional information In case of non-zero status
     status_info: u8, // optional?
-                     // data: Vec<u8>,
+    data: Vec<u8>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -427,76 +467,107 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
                 tag,
                 status,
                 status_info,
+                data: this[offset..].to_vec(),
             },
             offset,
         ))
     }
 }
 
-fn transfer(id: CommandId, d: &hidapi::HidDevice, data: &[u8]) -> Result<Vec<u8>, Error> {
-    let mut seq: u16 = 0;
+struct Command {
+    id: u32,
+    //arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
+    tag: u16,
+    //The two reserved bytes in the command should be sent as zero and ignored by the device
+    _reserved0: u8,
+    _reserved1: u8,
+    data: Vec<u8>,
+}
+impl Command {
+    fn new(id: u32, tag: u16, data: Vec<u8>) -> Self {
+        Self {
+            id,
+            tag,
+            _reserved0: 0,
+            _reserved1: 0,
+            data,
+        }
+    }
+}
 
+fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
     //Packets are up to 64 bytes long
     let buffer = &mut [0_u8; 64];
 
-    //command struct is 8, header is 1
-    let step = 64 - 9;
-    for chunk in data.chunks(step as usize) {
-        seq += 1;
+    // header is 1
+    let mut offset = 1;
 
-        //account for header
-        let mut offset = 1;
+    //command struct is 8
+    buffer.gwrite_with(cmd.id, &mut offset, LE)?;
+    buffer.gwrite_with(cmd.tag, &mut offset, LE)?;
+    buffer.gwrite_with(cmd._reserved0, &mut offset, LE)?;
+    buffer.gwrite_with(cmd._reserved1, &mut offset, LE)?;
 
-        buffer.gwrite_with(id as u32, &mut offset, LE)?;
-        buffer.gwrite_with(seq, &mut offset, LE)?;
-        buffer.gwrite_with(0_u8, &mut offset, LE)?;
-        buffer.gwrite_with(0_u8, &mut offset, LE)?;
+    let mut count = if cmd.data.len() > 55 {
+        55
+    } else {
+        cmd.data.len()
+    };
 
-        // println!("{:?} {:?}", offset, data.len());
+    //send up to the first 55 bytes
+    for (i, val) in cmd.data[..count].iter().enumerate() {
+        buffer[i + offset] = *val
+    }
 
-        // we dont include header in length, so offset -1
-        let len: usize = offset - 1 + data.len();
+    if count == cmd.data.len() {
+        buffer[0] = (PacketType::Final as u8) << 6 | (8 + count) as u8;
+        d.my_write(buffer)?;
+        return Ok(());
+    } else {
+        buffer[0] = (PacketType::Inner as u8) << 6 | (8 + count) as u8;
+        d.my_write(buffer)?;
+    }
 
-        println!("{:?} {:?}", step * seq, data.len());
+    //send the rest in chunks up to 63
+    for chunk in cmd.data[count..].chunks(64 - 1 as usize) {
+        count = count + chunk.len();
 
-        let packet = if step * seq >= (data.len() as u16) {
-            PacketType::Final
+        if count == cmd.data.len() {
+            buffer[0] = (PacketType::Final as u8) << 6 | chunk.len() as u8;
         } else {
-            PacketType::Inner
-        };
+            buffer[0] = (PacketType::Inner as u8) << 6 | chunk.len() as u8;
+        }
 
-        buffer[0] = (packet as u8) << 6 | len as u8;
+        for (i, val) in chunk.iter().enumerate() {
+            buffer[i + 1] = *val
+        }
 
-        let first_and_last = [&buffer[..offset], &chunk[..]].concat();
+        // println!("tx: {:02X?}", &buffer[..(chunk.len() + 1));
 
-        d.write(first_and_last.as_slice())?;
+        d.my_write(&buffer[..(chunk.len() + 1)])?;
     }
+    Ok(())
+}
 
-    //exit early for some commands
-    if id == CommandId::ResetIntoApp || id == CommandId::ResetIntoBootloader {
-        return Ok(vec![]);
-    }
-
-    //exit early for some commands
-    if id == CommandId::ResetIntoApp || id == CommandId::ResetIntoBootloader {
-        return Ok(vec![]);
-    }
-
+fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
     let mut bitsnbytes: Vec<u8> = vec![];
+
+    let buffer = &mut [0_u8; 64];
 
     // keep reading until Final packet
     while {
-        d.read(buffer)?;
+        d.my_read(buffer)?;
 
         let ptype = PacketType::try_from(buffer[0] >> 6)?;
+
         let len: usize = (buffer[0] & 0x3F) as usize;
-        println!(
-            "header: {:02X?} (ptype: {:?} len: {:?}) data: {:02X?}",
-            &buffer[0],
-            ptype,
-            len,
-            &buffer[1..=len]
-        );
+        // println!(
+        //     "rx header: {:02X?} (ptype: {:?} len: {:?}) data: {:02X?}",
+        //     &buffer[0],
+        //     ptype,
+        //     len,
+        //     &buffer[1..=len]
+        // );
 
         //skip the header byte and strip excess bytes remote is allowed to send
         bitsnbytes.extend_from_slice(&buffer[1..=len]);
@@ -504,17 +575,9 @@ fn transfer(id: CommandId, d: &hidapi::HidDevice, data: &[u8]) -> Result<Vec<u8>
         ptype == PacketType::Inner
     } {}
 
-    let mut offset = 0;
+    let resp = bitsnbytes.as_slice().pread_with::<CommandResponse>(0, LE)?;
 
-    let resp = bitsnbytes
-        .as_slice()
-        .gread_with::<CommandResponse>(&mut offset, LE)?;
-
-    if resp.status != CommandResponseStatus::Success {
-        return Err(Error::MalformedRequest);
-    }
-
-    Ok(bitsnbytes[offset..].to_vec())
+    Ok(resp)
 }
 
 #[derive(Clone, Debug)]
@@ -566,10 +629,6 @@ fn main() -> Result<(), Error> {
     let info: InfoResult = Info {}.send(&d)?;
     println!("{:?}", info);
 
-    // not supported on my board
-    // let dmesg: DmesgResult = Dmesg {}.send(&d)?;
-    // println!("{:?}", dmesg);
-
     if bininfo.mode != BinInfoMode::Bootloader {
         let _ = StartFlash {}.send(&d)?;
     }
@@ -577,91 +636,109 @@ fn main() -> Result<(), Error> {
     let starting_address = 0x4000; //todo samd51, get out of the binary or from an arg
     let top_address = bininfo.flash_num_pages * bininfo.flash_page_size;
 
-    {
-        //upload
+    let mut binary_checksums = vec![];
 
-        let mut f = File::open("./ferris_img.bin")?;
-        let mut binary = Vec::new();
-        //shouldnt there be a chunking interator for htis?
-        f.read_to_end(&mut binary)?;
+    use std::io::Read;
 
-        use std::io::prelude::*;
+    let mut f = File::open("./ferris_img.bin")?;
+    let mut binary = Vec::new();
+    //shouldnt there be a chunking interator for htis?
+    f.read_to_end(&mut binary)?;
 
-        //sigh, cant enumerate, right?
-        let mut page_index = 0;
-        for data in binary.chunks(bininfo.flash_page_size as usize) {
-            let target_address = starting_address + bininfo.flash_page_size * page_index;
-            // println!("{:02X?}", target_address);
-            // println!("{:?}", data.len());
-            // println!("{:02X?}", data);
-            let _ = WriteFlashPage {
-                target_address,
-                data: data.to_vec(),
-            }
-            .send(&d)?;
+    //sigh, cant enumerate, right?
+    let mut page_index = 0;
+    for page in binary.chunks(bininfo.flash_page_size as usize) {
+        let mut digest1 = crc16::Digest::new_custom(crc16::X25, 0u16, 0u16, crc::CalcType::Normal);
+        digest1.write(&page);
+        let chksum = digest1.sum16();
+        binary_checksums.push(chksum);
 
-            // println!("{:?}", crc16::checksum_x25(data));
-
-            page_index += 1;
+        let target_address = starting_address + bininfo.flash_page_size * page_index;
+        // println!("{:04X?}", target_address);
+        // println!("{:?}", page.len());
+        // println!("{:02X?}", page);
+        let _ = WriteFlashPage {
+            target_address,
+            data: page.to_vec(),
         }
+        .send(&d)?;
+
+        page_index += 1;
     }
 
-    // println!("done");
-    // {
-    //     //checksums
-    //     let max_pages = bininfo.max_message_size / 2 - 2;
-    //     let steps = max_pages * bininfo.flash_page_size;
+    let mut device_checksums = vec![];
+    //checksums
+    let max_pages = bininfo.max_message_size / 2 - 2;
+    let steps = max_pages * bininfo.flash_page_size;
 
-    //     for target_address in (starting_address..top_address).step_by(steps as usize) {
-    //         let pages_left = (top_address - target_address) / bininfo.flash_page_size;
+    for target_address in (starting_address..top_address).step_by(steps as usize) {
+        let pages_left = (top_address - target_address) / bininfo.flash_page_size;
 
-    //         let num_pages = if pages_left < max_pages {
-    //             pages_left
-    //         } else {
-    //             max_pages
-    //         };
-    //         let chk: ChksumPagesResult = ChksumPages {
-    //             target_address,
-    //             num_pages,
-    //         }
-    //         .send(&d)?;
-    //         println!("{:?}", chk);
-    //     }
-    // }
+        let num_pages = if pages_left < max_pages {
+            pages_left
+        } else {
+            max_pages
+        };
+        let chk: ChksumPagesResult = ChksumPages {
+            target_address,
+            num_pages,
+        }
+        .send(&d)?;
+        device_checksums.extend_from_slice(&chk.chksums[..]);
+    }
+
+    //todo last byte of binary doesnt match? padding or something?
+    assert_eq!(
+        &binary_checksums[..binary_checksums.len() - 1],
+        &device_checksums[..binary_checksums.len() - 1]
+    );
+
     let _ = ResetIntoApp {}.send(&d)?;
 
-    // {
-    //     //read words
-    //     //max? just use flash page size for now
+    //todo still not matching
+    //read words
+    //max? just use flash page size for now
 
-    //     let mut device_binary = vec![];
-    //     let bytes = bininfo.flash_page_size; //256
-    //     for target_address in (starting_address..top_address).step_by(bytes as usize) {
-    //         let bytes_left = top_address - target_address;
+    // let mut device_binary = vec![];
+    // let bytes = bininfo.flash_page_size; //256
+    // for target_address in (starting_address..top_address).step_by(bytes as usize) {
+    //     let bytes_left = top_address - target_address;
 
-    //         let num_words = if bytes_left < bytes {
-    //             bytes_left / 32
-    //         } else {
-    //             bytes / 32
-    //         };
-    //         println!("{:?}", bytes_left);
-    //         println!("{:02X?} {:?}", target_address, num_words);
+    //     let num_words = if bytes_left < bytes {
+    //         bytes_left / 32
+    //     } else {
+    //         bytes / 32
+    //     };
+    //     // println!("{:?}", bytes_left);
+    //     // println!("{:04X?} {:?}", target_address, num_words);
 
-    //         let res: ReadWordsResult = ReadWords {
-    //             target_address,
-    //             num_words,
-    //         }
-    //         .send(&d)?;
-
-    //         device_binary.extend_from_slice(&res.words[..]);
+    //     let res: ReadWordsResult = ReadWords {
+    //         target_address,
+    //         num_words,
     //     }
+    //     .send(&d)?;
+
+    //     device_binary.extend_from_slice(&res.words[..]);
     // }
 
+    // use std::io::{BufWriter, Write};
+
+    // let f = File::create("CURRENT.bin")?;
+    // let mut f = BufWriter::new(f);
+    // for double in device_binary.as_slice() {
+    //     f.write_all(&double.to_le_bytes())?;
+    // }
+
+    //todo test
     // let _ = WriteWords {
     //     target_addr: 0,
     //     num_words: 1,
     //     words: vec![],
     // .send(&d)?;
+
+    // todo, test. not supported on my board
+    // let dmesg: DmesgResult = Dmesg {}.send(&d)?;
+    // println!("{:?}", dmesg);
 
     Ok(())
 }
@@ -671,16 +748,205 @@ mod tests {
     use super::*;
 
     #[test]
-    fn packetize() {
-        let message = vec![
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xD0, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
-            0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+    fn send_fragmented() {
+        let data: Vec<Vec<u8>> = vec![
+            vec![
+                0x3f, 0x06, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
+                0x00, 0x03, 0x20, 0xd7, 0x5e, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x51, 0x5f, 0x00,
+                0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00,
+            ],
+            vec![
+                0x3f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00,
+                0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
+                0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00,
+                0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
+                0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
+            ],
+            vec![
+                0x3f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00,
+                0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
+                0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00,
+                0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
+                0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
+            ],
+            vec![
+                0x3f, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
+                0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00,
+                0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
+                0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ],
+            vec![
+                0x50, 0x00, 0x00, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
+                0x5f, 0x00, 0x00,
+            ],
         ];
-        // Packet 0: 83 01 02 03 AB FF FF FF
-        // Packet 1: 85 04 05 06 07 08
-        // Packet 2: 80 DE 42 42 42 42 FF FF
-        // Packet 3: D0 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14 15 16 17 FF FF FF
 
-        unimplemented!();
+        let le_page: Vec<u8> = vec![
+            0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x03, 0x20, 0xD7, 0x5E, 0x00, 0x00, 0x4D, 0x5F,
+            0x00, 0x00, 0x51, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00,
+            0x4D, 0x5F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F,
+            0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00,
+            0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F,
+            0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00,
+            0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F,
+            0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00,
+            0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F,
+            0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00,
+            0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F,
+            0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00,
+            0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F,
+            0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00,
+            0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00,
+            0x4D, 0x5F, 0x00, 0x00, 0x4D, 0x5F, 0x00, 0x00,
+        ];
+
+        let writer = |v: &[u8]| -> usize {
+            static mut I: usize = 0;
+
+            let res: &Vec<u8> = unsafe {
+                let res = &data[I];
+                I += 1;
+                res
+            };
+
+            assert_eq!(res.as_slice(), v);
+
+            v.len()
+        };
+
+        let mock = MyMock {
+            reader: || vec![],
+            writer,
+        };
+
+        let command = Command::new(0x0006, 4, le_page);
+
+        xmit(command, &mock).unwrap();
+    }
+
+    #[test]
+    fn receive_fragmented() {
+        let data: Vec<Vec<u8>> = vec![
+            vec![
+                0x3F, 0x04, 0x00, 0x00, 0x00, 0x55, 0x46, 0x32, 0x20, 0x42, 0x6F, 0x6F, 0x74, 0x6C,
+                0x6F, 0x61, 0x64, 0x65, 0x72, 0x20, 0x76, 0x33, 0x2E, 0x36, 0x2E, 0x30, 0x20, 0x53,
+                0x46, 0x48, 0x57, 0x52, 0x4F, 0x0D, 0x0A, 0x4D, 0x6F, 0x64, 0x65, 0x6C, 0x3A, 0x20,
+                0x50, 0x79, 0x47, 0x61, 0x6D, 0x65, 0x72, 0x0D, 0x0A, 0x42, 0x6F, 0x61, 0x72, 0x64,
+                0x2D, 0x49, 0x44, 0x3A, 0x20, 0x53, 0x41, 0x4D,
+            ],
+            vec![
+                0x54, 0x44, 0x35, 0x31, 0x4A, 0x31, 0x39, 0x41, 0x2D, 0x50, 0x79, 0x47, 0x61, 0x6D,
+                0x65, 0x72, 0x2D, 0x4D, 0x34, 0x0D, 0x0A,
+            ],
+        ];
+
+        let result: Vec<u8> = vec![
+            0x55, 0x46, 0x32, 0x20, 0x42, 0x6F, 0x6F, 0x74, 0x6C, 0x6F, 0x61, 0x64, 0x65, 0x72,
+            0x20, 0x76, 0x33, 0x2E, 0x36, 0x2E, 0x30, 0x20, 0x53, 0x46, 0x48, 0x57, 0x52, 0x4F,
+            0x0D, 0x0A, 0x4D, 0x6F, 0x64, 0x65, 0x6C, 0x3A, 0x20, 0x50, 0x79, 0x47, 0x61, 0x6D,
+            0x65, 0x72, 0x0D, 0x0A, 0x42, 0x6F, 0x61, 0x72, 0x64, 0x2D, 0x49, 0x44, 0x3A, 0x20,
+            0x53, 0x41, 0x4D, 0x44, 0x35, 0x31, 0x4A, 0x31, 0x39, 0x41, 0x2D, 0x50, 0x79, 0x47,
+            0x61, 0x6D, 0x65, 0x72, 0x2D, 0x4D, 0x34, 0x0D, 0x0A,
+        ];
+
+        let reader = || -> Vec<u8> {
+            static mut I: usize = 0;
+
+            let res: &Vec<u8> = unsafe {
+                let res = &data[I];
+                I += 1;
+                res
+            };
+
+            res.to_vec()
+        };
+
+        let mock = MyMock {
+            reader: reader,
+            writer: |_v| 0,
+        };
+
+        let response = CommandResponse {
+            tag: 0x0004,
+            status: CommandResponseStatus::Success,
+            status_info: 0x00,
+            data: result.to_vec(),
+        };
+
+        let rsp = rx(&mock).unwrap();
+        assert_eq!(rsp, response);
+    }
+
+    #[test]
+    fn parse_response() {
+        let data: Vec<u8> = vec![
+            0x55, 0x46, 0x32, 0x20, 0x42, 0x6F, 0x6F, 0x74, 0x6C, 0x6F, 0x61, 0x64, 0x65, 0x72,
+            0x20, 0x76, 0x33, 0x2E, 0x36, 0x2E, 0x30, 0x20, 0x53, 0x46, 0x48, 0x57, 0x52, 0x4F,
+            0x0D, 0x0A, 0x4D, 0x6F, 0x64, 0x65, 0x6C, 0x3A, 0x20, 0x50, 0x79, 0x47, 0x61, 0x6D,
+            0x65, 0x72, 0x0D, 0x0A, 0x42, 0x6F, 0x61, 0x72, 0x64, 0x2D, 0x49, 0x44, 0x3A, 0x20,
+            0x53, 0x41, 0x4D, 0x44, 0x35, 0x31, 0x4A, 0x31, 0x39, 0x41, 0x2D, 0x50, 0x79, 0x47,
+            0x61, 0x6D, 0x65, 0x72, 0x2D, 0x4D, 0x34, 0x0D, 0x0A,
+        ];
+
+        let infoResult = InfoResult {
+info: "UF2 Bootloader v3.6.0 SFHWRO\r\nModel: PyGamer\r\nBoard-ID: SAMD51J19A-PyGamer-M4\r\n".into()
+        };
+
+        let res: InfoResult = (data.as_slice()).pread_with::<InfoResult>(0, LE).unwrap();
+
+        assert_eq!(res, infoResult);
+    }
+}
+
+use hidapi::HidDevice;
+use hidapi::HidResult;
+
+struct MyMock<R, W>
+where
+    R: Fn() -> Vec<u8>,
+    W: Fn(&[u8]) -> usize,
+{
+    reader: R,
+    writer: W,
+}
+
+trait HidMockable {
+    fn my_write(&self, data: &[u8]) -> HidResult<usize>;
+    fn my_read(&self, buf: &mut [u8]) -> HidResult<usize>;
+}
+
+impl HidMockable for HidDevice {
+    fn my_write(&self, data: &[u8]) -> HidResult<usize> {
+        self.write(data)
+    }
+    fn my_read(&self, buf: &mut [u8]) -> HidResult<usize> {
+        self.read(buf)
+    }
+}
+
+impl<R, W> HidMockable for MyMock<R, W>
+where
+    R: Fn() -> Vec<u8>,
+    W: Fn(&[u8]) -> usize,
+{
+    fn my_write(&self, data: &[u8]) -> HidResult<usize> {
+        let len = (&self.writer)(data);
+
+        Ok(len)
+    }
+    fn my_read(&self, buf: &mut [u8]) -> HidResult<usize> {
+        let data = (self.reader)();
+
+        for (i, val) in data.iter().enumerate() {
+            buf[i] = *val
+        }
+
+        Ok(data.len())
     }
 }
