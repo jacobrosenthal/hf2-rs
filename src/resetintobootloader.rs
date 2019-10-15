@@ -1,6 +1,5 @@
 use crate::command::{xmit, Command, Commander, Error, NoResult};
 
-
 ///Reset the device into bootloader, usually for flashing. Usually, no response at all will arrive for this command.
 pub struct ResetIntoBootloader {}
 impl Commander<NoResult> for ResetIntoBootloader {

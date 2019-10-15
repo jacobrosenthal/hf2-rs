@@ -2,6 +2,14 @@ use crate::mock::HidMockable;
 use core::convert::TryFrom;
 use scroll::{ctx, Pread, Pwrite, LE};
 
+pub fn send<C, RES>(command: &C, d: &hidapi::HidDevice) -> Result<RES, Error>
+where
+    C: Commander<RES>,
+    RES: CommanderResult,
+{
+    command.send(d)
+}
+
 pub trait CommanderResult {}
 
 pub trait Commander<RES: CommanderResult> {
