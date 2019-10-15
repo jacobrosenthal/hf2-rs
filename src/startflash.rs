@@ -4,8 +4,10 @@ use crate::command::{rx, xmit, Command, Commander, Error, NoResult};
 pub struct StartFlash {}
 
 impl<'a> Commander<'a, NoResult> for StartFlash {
+    const ID: u32 = 0x0005;
+
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
-        let command = Command::new(0x0005, 0, vec![]);
+        let command = Command::new(Self::ID, 0, vec![]);
 
         xmit(command, d)?;
 

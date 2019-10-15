@@ -11,6 +11,8 @@ where
 }
 
 pub trait Commander<'a, RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>> {
+    const ID: u32;
+
     fn send(&self, d: &hidapi::HidDevice) -> Result<RES, Error>;
 }
 

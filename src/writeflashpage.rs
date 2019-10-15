@@ -28,11 +28,13 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a WriteFlashPage {
 }
 
 impl<'a> Commander<'a, NoResult> for WriteFlashPage {
+    const ID: u32 = 0x0006;
+
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
         let mut data = vec![0_u8; self.data.len() + 4];
-        self.try_into_ctx(&mut data, LE)?;
+        let _ = self.try_into_ctx(&mut data, LE)?;
 
-        let command = Command::new(0x0006, 0, data);
+        let command = Command::new(Self::ID, 0, data);
 
         xmit(command, d)?;
 

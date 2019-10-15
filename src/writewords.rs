@@ -30,11 +30,13 @@ impl<'a> TryIntoCtx<::scroll::Endian> for &'a WriteWords {
 }
 
 impl<'a> Commander<'a, NoResult> for WriteWords {
+    const ID: u32 = 0x0009;
+
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
         let data = &mut [0_u8; 64];
-        self.try_into_ctx(&mut data, LE)?;
+        let _ = self.try_into_ctx(&mut data, LE)?;
 
-        let command = Command::new(0x0009, 0, data.to_vec());
+        let command = Command::new(Self::ID, 0, data);
 
         xmit(command, d)?;
 

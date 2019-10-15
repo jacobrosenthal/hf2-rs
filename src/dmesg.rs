@@ -5,8 +5,10 @@ use scroll::{ctx, Pread, LE};
 pub struct Dmesg {}
 
 impl<'a> Commander<'a, DmesgResult> for Dmesg {
+    const ID: u32 = 0x0010;
+
     fn send(&self, d: &hidapi::HidDevice) -> Result<DmesgResult, Error> {
-        let command = Command::new(0x0010, 0, vec![]);
+        let command = Command::new(Self::ID, 0, vec![]);
 
         xmit(command, d)?;
 

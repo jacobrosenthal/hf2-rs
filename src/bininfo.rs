@@ -26,8 +26,10 @@ impl TryFrom<u32> for BinInfoMode {
 pub struct BinInfo {}
 
 impl<'a> Commander<'a, BinInfoResult> for BinInfo {
+    const ID: u32 = 0x0001;
+
     fn send(&self, d: &hidapi::HidDevice) -> Result<BinInfoResult, Error> {
-        let command = Command::new(0x0001, 0, vec![]);
+        let command = Command::new(Self::ID, 0, vec![]);
 
         xmit(command, d)?;
 

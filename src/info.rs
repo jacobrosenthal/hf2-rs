@@ -5,8 +5,10 @@ use scroll::{ctx, Pread, LE};
 pub struct Info {}
 
 impl<'a> Commander<'a, InfoResult> for Info {
+    const ID: u32 = 0x0002;
+
     fn send(&self, d: &hidapi::HidDevice) -> Result<InfoResult, Error> {
-        let command = Command::new(0x0002, 0, vec![]);
+        let command = Command::new(Self::ID, 0, vec![]);
 
         xmit(command, d)?;
 
