@@ -1,5 +1,5 @@
 use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
-use scroll::{ctx, Pread, Pwrite, LE};
+use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
 
 ///Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
 pub struct ReadWords {
@@ -7,14 +7,27 @@ pub struct ReadWords {
     num_words: u32,
 }
 
-impl<'a> Commander<'a, ReadWordsResult> for ReadWords {
-    fn send(&self, d: &hidapi::HidDevice) -> Result<ReadWordsResult, Error> {
-        let data = &mut [0_u8; 8];
+impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ReadWords {
+    type Error = ::scroll::Error;
 
+    fn try_into_ctx(
+        self,
+        dst: &mut [u8],
+        ctx: ::scroll::Endian,
+    ) -> ::scroll::export::result::Result<usize, Self::Error> {
         let mut offset = 0;
 
-        data.gwrite_with(self.target_address, &mut offset, LE)?;
-        data.gwrite_with(self.num_words, &mut offset, LE)?;
+        dst.gwrite_with(self.target_address, &mut offset, ctx)?;
+        dst.gwrite_with(self.num_words, &mut offset, ctx)?;
+
+        Ok(offset)
+    }
+}
+
+impl<'a> Commander<'a, ReadWordsResult> for ReadWords {
+    fn send(&self, d: &hidapi::HidDevice) -> Result<ReadWordsResult, Error> {
+        let mut data = vec![0_u8; 8];
+        self.try_into_ctx(&mut data, LE)?;
 
         let command = Command::new(0x0008, 0, data.to_vec());
 

@@ -1,5 +1,5 @@
 use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
-use scroll::{ctx, Pread, Pwrite, LE};
+use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
 
 ///Compute checksum of a number of pages. Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
 pub struct ChksumPages {
@@ -7,14 +7,27 @@ pub struct ChksumPages {
     pub num_pages: u32,
 }
 
-impl<'a> Commander<'a, ChksumPagesResult> for ChksumPages {
-    fn send(&self, d: &hidapi::HidDevice) -> Result<ChksumPagesResult, Error> {
-        let data = &mut [0_u8; 8];
+impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ChksumPages {
+    type Error = ::scroll::Error;
 
+    fn try_into_ctx(
+        self,
+        dst: &mut [u8],
+        ctx: ::scroll::Endian,
+    ) -> ::scroll::export::result::Result<usize, Self::Error> {
         let mut offset = 0;
 
-        data.gwrite_with(self.target_address, &mut offset, LE)?;
-        data.gwrite_with(self.num_pages, &mut offset, LE)?;
+        dst.gwrite_with(self.target_address, &mut offset, ctx)?;
+        dst.gwrite_with(self.num_pages, &mut offset, ctx)?;
+
+        Ok(offset)
+    }
+}
+
+impl<'a> Commander<'a, ChksumPagesResult> for ChksumPages {
+    fn send(&self, d: &hidapi::HidDevice) -> Result<ChksumPagesResult, Error> {
+        let mut data = vec![0_u8; 8];
+        self.try_into_ctx(&mut data, LE)?;
 
         let command = Command::new(0x0007, 0, data.to_vec());
 
