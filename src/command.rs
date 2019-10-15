@@ -2,22 +2,27 @@ use crate::mock::HidMockable;
 use core::convert::TryFrom;
 use scroll::{ctx, Pread, Pwrite, LE};
 
-pub fn send<C, RES>(command: &C, d: &hidapi::HidDevice) -> Result<RES, Error>
+pub fn send<'a, C, RES>(command: &C, d: &hidapi::HidDevice) -> Result<RES, Error>
 where
-    C: Commander<RES>,
-    RES: CommanderResult,
+    C: Commander<'a, RES>,
+    RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>,
 {
     command.send(d)
 }
 
-pub trait CommanderResult {}
-
-pub trait Commander<RES: CommanderResult> {
+pub trait Commander<'a, RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>> {
     fn send(&self, d: &hidapi::HidDevice) -> Result<RES, Error>;
 }
 
 pub struct NoResult {}
-impl CommanderResult for NoResult {}
+
+//todo, don't
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for NoResult {
+    type Error = Error;
+    fn try_from_ctx(_this: &'a [u8], _le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
+        Ok((NoResult {}, 0))
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct CommandResponse {

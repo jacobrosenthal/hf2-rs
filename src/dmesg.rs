@@ -1,10 +1,10 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, CommanderResult, Error};
+use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
 use scroll::{ctx, Pread, LE};
 
 ///Return internal log buffer if any. The result is a character array.
 pub struct Dmesg {}
 
-impl Commander<DmesgResult> for Dmesg {
+impl<'a> Commander<'a, DmesgResult> for Dmesg {
     fn send(&self, d: &hidapi::HidDevice) -> Result<DmesgResult, Error> {
         let command = Command::new(0x0010, 0, vec![]);
 
@@ -26,7 +26,6 @@ impl Commander<DmesgResult> for Dmesg {
 pub struct DmesgResult {
     pub logs: String,
 }
-impl CommanderResult for DmesgResult {}
 
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for DmesgResult {
     type Error = Error;

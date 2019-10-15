@@ -1,9 +1,10 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, CommanderResult, Error};
+use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
 use scroll::{ctx, Pread, LE};
 
 /// Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
 pub struct Info {}
-impl Commander<InfoResult> for Info {
+
+impl<'a> Commander<'a, InfoResult> for Info {
     fn send(&self, d: &hidapi::HidDevice) -> Result<InfoResult, Error> {
         let command = Command::new(0x0002, 0, vec![]);
 
@@ -25,7 +26,6 @@ impl Commander<InfoResult> for Info {
 pub struct InfoResult {
     pub info: String,
 }
-impl CommanderResult for InfoResult {}
 
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResult {
     type Error = Error;

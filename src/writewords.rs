@@ -8,7 +8,7 @@ pub struct WriteWords {
     pub words: Vec<u32>,
 }
 
-impl Commander<NoResult> for WriteWords {
+impl<'a> Commander<'a, NoResult> for WriteWords {
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
         let data = &mut [0_u8; 64];
 

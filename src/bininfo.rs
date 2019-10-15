@@ -1,4 +1,4 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, CommanderResult, Error};
+use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
 use core::convert::TryFrom;
 use scroll::{ctx, Pread, LE};
 
@@ -25,7 +25,7 @@ impl TryFrom<u32> for BinInfoMode {
 /// This command states the current mode of the device:
 pub struct BinInfo {}
 
-impl Commander<BinInfoResult> for BinInfo {
+impl<'a> Commander<'a, BinInfoResult> for BinInfo {
     fn send(&self, d: &hidapi::HidDevice) -> Result<BinInfoResult, Error> {
         let command = Command::new(0x0001, 0, vec![]);
 
@@ -79,8 +79,6 @@ impl From<u32> for FamilyId {
         }
     }
 }
-
-impl CommanderResult for BinInfoResult {}
 
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
     type Error = Error;

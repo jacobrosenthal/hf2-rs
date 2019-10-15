@@ -1,4 +1,4 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, CommanderResult, Error};
+use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
 use scroll::{ctx, Pread, Pwrite, LE};
 
 ///Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
@@ -7,7 +7,7 @@ pub struct ReadWords {
     num_words: u32,
 }
 
-impl Commander<ReadWordsResult> for ReadWords {
+impl<'a> Commander<'a, ReadWordsResult> for ReadWords {
     fn send(&self, d: &hidapi::HidDevice) -> Result<ReadWordsResult, Error> {
         let data = &mut [0_u8; 8];
 
@@ -36,7 +36,6 @@ impl Commander<ReadWordsResult> for ReadWords {
 pub struct ReadWordsResult {
     pub words: Vec<u32>,
 }
-impl CommanderResult for ReadWordsResult {}
 
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResult {
     type Error = Error;

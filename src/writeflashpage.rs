@@ -7,7 +7,7 @@ pub struct WriteFlashPage {
     pub data: Vec<u8>,
 }
 
-impl Commander<NoResult> for WriteFlashPage {
+impl<'a> Commander<'a, NoResult> for WriteFlashPage {
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
         let mut data = vec![0_u8; self.data.len() + 4];
 
