@@ -57,6 +57,10 @@ pub struct ChksumPagesResult {
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ChksumPagesResult {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
+        if this.len() < 2 {
+            return Err(Error::Parse);
+        }
+
         let mut chksums: Vec<u16> = vec![0; this.len() / 2];
 
         let mut offset = 0;

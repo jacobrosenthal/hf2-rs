@@ -55,6 +55,10 @@ pub struct ReadWordsResult {
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResult {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
+        if this.len() < 4 {
+            return Err(Error::Parse);
+        }
+
         let mut words: Vec<u32> = vec![0; this.len() / 4];
 
         let mut offset = 0;

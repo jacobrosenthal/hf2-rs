@@ -85,7 +85,7 @@ impl From<u32> for FamilyId {
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        if this.len() < 16 {
+        if this.len() < 20 {
             return Err(Error::Parse);
         }
 

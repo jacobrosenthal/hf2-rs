@@ -91,7 +91,7 @@ impl TryFrom<u8> for PacketType {
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        if this.len() < 4 {
+        if this.len() < 5 {
             return Err(Error::Parse);
         }
 
