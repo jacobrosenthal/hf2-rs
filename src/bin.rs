@@ -264,8 +264,8 @@ struct Opt {
     #[structopt(subcommand)]
     cmd: Cmd,
 
-    #[structopt(short, parse(try_from_str = parse_hex_16))]
+    #[structopt(short = "p", parse(try_from_str = parse_hex_16))]
     pid: Option<u16>,
-    #[structopt(short, parse(try_from_str = parse_hex_16))]
+    #[structopt(short = "v", parse(try_from_str = parse_hex_16))]
     vid: Option<u16>,
 }

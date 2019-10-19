@@ -1,6 +1,12 @@
 # uf2-hid
-Implements the hid uploader described at [Microsofts uf2 bootloader](https://github.com/microsoft/uf2/blob/86e101e3a282553756161fe12206c7a609975e70/hf2.md) as both a library and binary.
+Implements [Microsofts HID Flashing Format (HF2)](https://github.com/microsoft/uf2/blob/86e101e3a282553756161fe12206c7a609975e70/hf2.md) as both a library and binary.
 
+## install and setup
+On macos, it doesnt seem to require any other packages. Note this protocol works over USB HID, which is an input standard, and as of Catalina you will get a permissions prompt and must follow directions to allow "Input Monitoring" for the Terminal application.
+
+On linux I think you just needed pkg-config which comes with most distributions.
+
+## usage
 used as a library
 ```
 let chk: ChksumPagesResult = ChksumPages {
@@ -15,7 +21,7 @@ uf2 0.1.0
 Microsoft HID Flashing Format
 
 USAGE:
-    uf2 -p <pid> -v <vid> <SUBCOMMAND>
+    uf2 [OPTIONS] <SUBCOMMAND>
 
 FLAGS:
     -h, --help       Prints help information
@@ -36,6 +42,8 @@ SUBCOMMANDS:
     reset-into-bootloader    Reset the device into bootloader, usually for flashing
     verify                   verify
 ```
+It will attempt to autodetect a device by sending the bininfo command any hid devices it finds and using the first one that responds. I don't think that should be destructive, but you can also specify pid and vid (before the command for some reason..) instead.
+
 ```
-cargo run -- -v 9114 -p 61 flash -f neopixel_rainbow.bin -a 0x4000
+cargo run -- -v 0x0239 -p 0x003D flash -f neopixel_rainbow.bin -a 0x4000
 ```
