@@ -37,7 +37,7 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for DmesgResult {
         let mut offset = 0;
         this.gread_inout_with(&mut offset, &mut bytes, le)?;
 
-        let logs = std::str::from_utf8(&bytes)?;
+        let logs = core::str::from_utf8(&bytes)?;
 
         Ok((DmesgResult { logs: logs.into() }, offset))
     }

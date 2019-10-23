@@ -37,7 +37,7 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResult {
         let mut offset = 0;
         this.gread_inout_with(&mut offset, &mut bytes, le)?;
 
-        let info = std::str::from_utf8(&bytes)?;
+        let info = core::str::from_utf8(&bytes)?;
 
         Ok((InfoResult { info: info.into() }, offset))
     }

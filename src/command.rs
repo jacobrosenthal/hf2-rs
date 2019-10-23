@@ -246,8 +246,8 @@ impl From<scroll::Error> for Error {
     }
 }
 
-impl From<std::str::Utf8Error> for Error {
-    fn from(_err: std::str::Utf8Error) -> Self {
+impl From<core::str::Utf8Error> for Error {
+    fn from(_err: core::str::Utf8Error) -> Self {
         Error::Parse
     }
 }
