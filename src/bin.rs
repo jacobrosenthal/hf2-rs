@@ -243,17 +243,17 @@ pub enum Cmd {
 
     /// flash
     flash {
-        #[structopt(short = "f")]
+        #[structopt(short = "f", name = "file", long = "file")]
         file: PathBuf,
-        #[structopt(short, parse(try_from_str = parse_hex_32))]
+        #[structopt(short = "a", name = "address", long = "address", parse(try_from_str = parse_hex_32))]
         address: u32,
     },
 
     /// verify
     verify {
-        #[structopt(short = "f")]
+        #[structopt(short = "f", name = "file", long = "file")]
         file: PathBuf,
-        #[structopt(short, parse(try_from_str = parse_hex_32))]
+        #[structopt(short = "a", name = "address", long = "address", parse(try_from_str = parse_hex_32))]
         address: u32,
     },
 }
@@ -264,8 +264,8 @@ struct Opt {
     #[structopt(subcommand)]
     cmd: Cmd,
 
-    #[structopt(short = "p", parse(try_from_str = parse_hex_16))]
+    #[structopt(short = "p", name = "pid", long = "pid", parse(try_from_str = parse_hex_16))]
     pid: Option<u16>,
-    #[structopt(short = "v", parse(try_from_str = parse_hex_16))]
+    #[structopt(short = "v", name = "vid", long = "vid", parse(try_from_str = parse_hex_16))]
     vid: Option<u16>,
 }
