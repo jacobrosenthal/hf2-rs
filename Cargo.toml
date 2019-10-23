@@ -19,13 +19,12 @@ path = "src/bin.rs"
 
 [patch.crates-io]
 scroll = { git = 'https://github.com/m4b/scroll', features = ["derive"] }
-crc = { git = 'https://github.com/mrhooray/crc-rs' }
 
 
 [dependencies]
 structopt = { version = "0.3"}
 hidapi = "0.5.2"
 scroll = { version = "0.10.0", features = ["derive"] }
-crc = "1.0.0"
+crc = "1.9.0"
 
 
