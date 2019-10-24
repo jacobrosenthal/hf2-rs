@@ -17,10 +17,6 @@ name = "uf2"
 path = "src/bin.rs"
 
 
-[patch.crates-io]
-scroll = { git = 'https://github.com/m4b/scroll', features = ["derive"] }
-
-
 [dependencies]
 structopt = { version = "0.3"}
 hidapi = "0.5.2"
