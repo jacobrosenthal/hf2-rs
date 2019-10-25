@@ -168,10 +168,12 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
 
     if count == cmd.data.len() {
         buffer[0] = (PacketType::Final as u8) << 6 | (8 + count) as u8;
+        log::debug!("tx: {:02X?}", &buffer[..]);
         d.my_write(buffer)?;
         return Ok(());
     } else {
         buffer[0] = (PacketType::Inner as u8) << 6 | (8 + count) as u8;
+        log::debug!("tx: {:02X?}", &buffer[..]);
         d.my_write(buffer)?;
     }
 
@@ -190,7 +192,6 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
         }
 
         log::debug!("tx: {:02X?}", &buffer[..=chunk.len()]);
-
         d.my_write(&buffer[..=chunk.len()])?;
     }
     Ok(())
