@@ -22,5 +22,6 @@ structopt = { version = "0.3"}
 hidapi = "0.5.2"
 scroll = { version = "0.10.0", features = ["derive"] }
 crc = "1.9.0"
+log = "0.4.6"
 
 

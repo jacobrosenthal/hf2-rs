@@ -1,5 +1,6 @@
 use crate::mock::HidMockable;
 use core::convert::TryFrom;
+use log;
 use scroll::{ctx, Pread, Pwrite, LE};
 
 pub fn send<'a, C, RES>(command: &C, d: &hidapi::HidDevice) -> Result<RES, Error>
@@ -113,6 +114,7 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct Command {
     ///Command ID
     id: u32,
@@ -139,6 +141,8 @@ impl Command {
 
 ///Transmit a Command, command.data should already have been LE converted
 pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
+    log::debug!("{:?}", cmd);
+
     //Packets are up to 64 bytes long
     let buffer = &mut [0_u8; 64];
 
@@ -185,7 +189,7 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
             buffer[i + 1] = *val
         }
 
-        // println!("tx: {:02X?}", &buffer[..=chunk.len()));
+        log::debug!("tx: {:02X?}", &buffer[..=chunk.len()]);
 
         d.my_write(&buffer[..=chunk.len()])?;
     }
@@ -205,21 +209,24 @@ pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
         let ptype = PacketType::try_from(buffer[0] >> 6)?;
 
         let len: usize = (buffer[0] & 0x3F) as usize;
-        // println!(
-        //     "rx header: {:02X?} (ptype: {:?} len: {:?}) data: {:02X?}",
-        //     &buffer[0],
-        //     ptype,
-        //     len,
-        //     &buffer[1..=len]
-        // );
+        log::debug!(
+            "rx header: {:02X?} (ptype: {:?} len: {:?}) data: {:02X?}",
+            &buffer[0],
+            ptype,
+            len,
+            &buffer[1..=len]
+        );
 
         //skip the header byte and strip excess bytes remote is allowed to send
         bitsnbytes.extend_from_slice(&buffer[1..=len]);
 
+        //funky do while notation
         ptype == PacketType::Inner
     } {}
 
     let resp = bitsnbytes.as_slice().pread_with::<CommandResponse>(0, LE)?;
+
+    log::debug!("{:?}", resp);
 
     Ok(resp)
 }
