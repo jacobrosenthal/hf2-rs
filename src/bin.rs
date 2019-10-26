@@ -203,6 +203,7 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
 
     let mut binary_checksums = vec![];
 
+    //collect and sums so we can view all mismatches, not just first
     for page in binary.chunks(bininfo.flash_page_size as usize) {
         let mut digest1 = crc16::Digest::new_custom(crc16::X25, 0u16, 0u16, crc::CalcType::Normal);
         digest1.write(&page);
@@ -210,9 +211,10 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         binary_checksums.push(digest1.sum16());
     }
 
+    //only check as many as our binary has
     assert_eq!(
-        &binary_checksums[..binary_checksums.len() - 1],
-        &device_checksums[..binary_checksums.len() - 1]
+        &binary_checksums[..binary_checksums.len()],
+        &device_checksums[..binary_checksums.len()]
     );
     println!("Success");
 
