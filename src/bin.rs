@@ -46,8 +46,8 @@ fn main() -> Result<(), Error> {
     };
 
     match args.cmd {
-        Cmd::resetIntoApp => reset_into_bootloader(&d)?,
-        Cmd::resetIntoBootloader => reset_into_app(&d)?,
+        Cmd::resetIntoApp => reset_into_app(&d)?,
+        Cmd::resetIntoBootloader => reset_into_bootloader(&d)?,
         Cmd::info => info(&d)?,
         Cmd::bininfo => bininfo(&d)?,
         Cmd::dmesg => dmesg(&d)?,
