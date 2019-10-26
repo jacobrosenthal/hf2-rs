@@ -248,7 +248,7 @@ pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
 pub enum Error {
     Arguments,
     Parse,
-    MalformedRequest,
+    CommandNotRecognized,
     Execution,
     Sequence,
     Transmission,

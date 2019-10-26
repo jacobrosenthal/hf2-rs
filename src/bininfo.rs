@@ -36,7 +36,7 @@ impl<'a> Commander<'a, BinInfoResult> for BinInfo {
         let rsp = rx(d)?;
 
         if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::MalformedRequest);
+            return Err(Error::CommandNotRecognized);
         }
 
         let res: BinInfoResult = (rsp.data.as_slice()).pread_with::<BinInfoResult>(0, LE)?;

@@ -38,7 +38,7 @@ impl<'a> Commander<'a, ChksumPagesResult> for ChksumPages {
         let rsp = rx(d)?;
 
         if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::MalformedRequest);
+            return Err(Error::CommandNotRecognized);
         }
 
         let res: ChksumPagesResult =

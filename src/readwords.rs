@@ -38,7 +38,7 @@ impl<'a> Commander<'a, ReadWordsResult> for ReadWords {
         let rsp = rx(d)?;
 
         if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::MalformedRequest);
+            return Err(Error::CommandNotRecognized);
         }
 
         let res: ReadWordsResult = (rsp.data.as_slice()).pread_with::<ReadWordsResult>(0, LE)?;

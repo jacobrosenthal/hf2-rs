@@ -15,7 +15,7 @@ impl<'a> Commander<'a, DmesgResult> for Dmesg {
         let rsp = rx(d)?;
 
         if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::MalformedRequest);
+            return Err(Error::CommandNotRecognized);
         }
 
         let res: DmesgResult = (rsp.data.as_slice()).pread_with::<DmesgResult>(0, LE)?;

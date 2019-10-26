@@ -15,7 +15,7 @@ impl<'a> Commander<'a, InfoResult> for Info {
         let rsp = rx(d)?;
 
         if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::MalformedRequest);
+            return Err(Error::CommandNotRecognized);
         }
 
         let res: InfoResult = (rsp.data.as_slice()).pread_with::<InfoResult>(0, LE)?;
