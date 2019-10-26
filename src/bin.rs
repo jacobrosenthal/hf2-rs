@@ -1,5 +1,6 @@
 use crc::{self, crc16, Hasher16};
 use hidapi::{HidApi, HidDevice};
+use maplit::hashmap;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -21,29 +22,36 @@ fn main() -> Result<(), Error> {
 
         let mut device: Option<HidDevice> = None;
 
-        for device_info in api.devices() {
-            println!(
-                "trying {:?} {:?}",
-                device_info
-                    .manufacturer_string
-                    .as_ref()
-                    .unwrap_or(&"".to_string()),
-                device_info
-                    .product_string
-                    .as_ref()
-                    .unwrap_or(&"".to_string())
-            );
+        let vendor = hashmap! {
+        0x1D50 => vec![0x6110, 0x6112],
+        0x239A => vec![0x0035, 0x002D, 0x0015, 0x001B, 0xB000, 0x0024, 0x000F, 0x0013, 0x0021, 0x0022, 0x0031, 0x002B, 0x0037, 0x0035, 0x002F, 0x002B, 0x0033, 0x0034, 0x003D, 0x0018, 0x001C, 0x001E, 0x0027, 0x0022],
+        0x04D8=> vec![0xEDB3, 0xEDBE, 0xEF66],
+        0x2341=>vec![0x024E, 0x8053, 0x024D],
+        0x16D0=>vec![0x0CDA],
+        0x03EB=>vec![0x2402],
+        0x2886=>vec![0x000D],
+        0x1B4F=>vec![0x0D23, 0x0D22],
+        0x1209=>vec![0x4D44, 0x2017],
+        };
 
-            if let Ok(d) = device_info.open_device(&api) {
-                let info = Info {}.send(&d);
-                if info.is_ok() {
-                    device = Some(d);
-                    break;
+        for device_info in api.devices() {
+            if let Some(products) = vendor.get(&device_info.vendor_id) {
+                if products.contains(&device_info.product_id) {
+                    if let Ok(d) = device_info.open_device(&api) {
+                        device = Some(d);
+                        break;
+                    }
                 }
             }
         }
         device.expect("Are you sure device is plugged in and in uf2 mode?")
     };
+
+    println!(
+        "found {:?} {:?}",
+        d.get_manufacturer_string(),
+        d.get_product_string()
+    );
 
     match args.cmd {
         Cmd::resetIntoApp => reset_into_app(&d)?,
