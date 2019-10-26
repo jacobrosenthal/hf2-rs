@@ -7,6 +7,8 @@ use structopt::StructOpt;
 use uf2::*;
 
 fn main() -> Result<(), Error> {
+    pretty_env_logger::init();
+
     let args = Opt::from_args();
 
     let api = HidApi::new().expect("Couldn't find system usb");

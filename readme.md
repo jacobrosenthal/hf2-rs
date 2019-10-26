@@ -7,8 +7,8 @@ On macOS, it doesnt seem to require any other packages. Note this protocol works
 
 On linux if building libusb fails you can also try setting up the native `libusb` library where it can be found by `pkg-config` or `vcpkg`.
 
-## usage
-used as a library
+## used as a library
+
 ```
 let chk: ChksumPagesResult = ChksumPages {
     0x4000,
@@ -16,7 +16,8 @@ let chk: ChksumPagesResult = ChksumPages {
 }.send(&d)?;
 
 ```
-or via cli
+
+## used via cli
 ```
 uf2 0.1.0
 Microsoft HID Flashing Format
@@ -47,4 +48,8 @@ It will attempt to autodetect a device by sending the bininfo command any hid de
 
 ```
 cargo run -- -v 0x0239 -p 0x003D flash -f neopixel_rainbow.bin -a 0x4000
+```
+If you find an error, be sure to run with debug to see where in the process it failed
+```
+RUST_LOG=debug cargo run -- -v 0x0239 -p 0x003D flash -f neopixel_rainbow.bin -a 0x4000
 ```
