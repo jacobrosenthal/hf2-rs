@@ -146,7 +146,7 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
     //Packets are up to 64 bytes long
     let buffer = &mut [0_u8; 64];
 
-    // header is 1
+    // header is at 0 so start at 1
     let mut offset = 1;
 
     //command struct is 8 bytes
@@ -163,18 +163,22 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
 
     //send up to the first 55 bytes
     for (i, val) in cmd.data[..count].iter().enumerate() {
-        buffer[i + offset] = *val
+        buffer[i + offset] = *val;
     }
+    offset += count;
 
+    //subtract header from offset for packet size
     if count == cmd.data.len() {
-        buffer[0] = (PacketType::Final as u8) << 6 | (8 + count) as u8;
-        log::debug!("tx: {:02X?}", &buffer[..]);
-        d.my_write(buffer)?;
+        buffer[0] = (PacketType::Final as u8) << 6 | (offset - 1) as u8;
+        log::debug!("tx: {:02X?}", &buffer[..offset]);
+
+        d.my_write(&buffer[..offset])?;
         return Ok(());
     } else {
-        buffer[0] = (PacketType::Inner as u8) << 6 | (8 + count) as u8;
-        log::debug!("tx: {:02X?}", &buffer[..]);
-        d.my_write(buffer)?;
+        buffer[0] = (PacketType::Inner as u8) << 6 | (offset - 1) as u8;
+        log::debug!("tx: {:02X?}", &buffer[..offset]);
+
+        d.my_write(&buffer[..offset])?;
     }
 
     //send the rest in chunks up to 63
