@@ -155,16 +155,17 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
     buffer.gwrite_with(cmd._reserved0, &mut offset, LE)?;
     buffer.gwrite_with(cmd._reserved1, &mut offset, LE)?;
 
+    //copy up to the first 55 bytes
     let mut count = if cmd.data.len() > 55 {
         55
     } else {
         cmd.data.len()
     };
-
-    //send up to the first 55 bytes
     for (i, val) in cmd.data[..count].iter().enumerate() {
         buffer[i + offset] = *val;
     }
+
+    //add those bytes to the offset too
     offset += count;
 
     //subtract header from offset for packet size
