@@ -1,5 +1,5 @@
 use crate::command::{rx, xmit, Command, Commander, Error, NoResult};
-use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
+use scroll::{ctx::TryIntoCtx, Pwrite, LE};
 
 ///Dual of READ WORDS, with the same constraints. No Result.
 pub struct WriteWords {
@@ -33,7 +33,7 @@ impl<'a> Commander<'a, NoResult> for WriteWords {
     const ID: u32 = 0x0009;
 
     fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
-        let data = &mut [0_u8; 64];
+        let mut data = vec![0_u8; self.words.len() * 4 + 8];
         let _ = self.try_into_ctx(&mut data, LE)?;
 
         let command = Command::new(Self::ID, 0, data);
