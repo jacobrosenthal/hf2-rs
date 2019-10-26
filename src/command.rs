@@ -209,11 +209,18 @@ pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
 
     // keep reading until Final packet
     while {
-        d.my_read(buffer)?;
+        let count = d.my_read(buffer)?;
+        if count < 1 {
+            return Err(Error::Parse);
+        }
 
         let ptype = PacketType::try_from(buffer[0] >> 6)?;
 
         let len: usize = (buffer[0] & 0x3F) as usize;
+        if len >= count {
+            return Err(Error::Parse);
+        }
+
         log::debug!(
             "rx header: {:02X?} (ptype: {:?} len: {:?}) data: {:02X?}",
             &buffer[0],
