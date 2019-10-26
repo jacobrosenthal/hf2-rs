@@ -165,7 +165,7 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
     f.read_to_end(&mut binary)?;
 
     //pad zeros to page size
-    let padded_num_pages = (binary.len() as f64 / bininfo.flash_page_size as f64).ceil() as u32;
+    let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;
     let padded_size = padded_num_pages * bininfo.flash_page_size;
     for _i in 0..(padded_size as usize - binary.len()) {
         binary.push(0x0);
