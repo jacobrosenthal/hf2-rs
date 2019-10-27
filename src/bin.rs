@@ -117,10 +117,11 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         let _ = StartFlash {}.send(&mut [], &d)?;
     }
 
+    //todo map to an error?
     //shouldnt there be a chunking interator for this?
-    let mut f = File::open(file)?;
+    let mut f = File::open(file).unwrap();
     let mut binary = Vec::new();
-    f.read_to_end(&mut binary)?;
+    f.read_to_end(&mut binary).unwrap();
 
     //pad zeros to page size
     let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;
@@ -183,10 +184,11 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         let _ = StartFlash {}.send(&mut [], &d)?;
     }
 
+    //todo map to an error?
     //shouldnt there be a chunking interator for this?
-    let mut f = File::open(file)?;
+    let mut f = File::open(file).unwrap();
     let mut binary = Vec::new();
-    f.read_to_end(&mut binary)?;
+    f.read_to_end(&mut binary).unwrap();
 
     //pad zeros to page size
     let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;

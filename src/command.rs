@@ -245,12 +245,6 @@ impl From<core::str::Utf8Error> for Error {
     }
 }
 
-impl From<std::io::Error> for Error {
-    fn from(_err: std::io::Error) -> Self {
-        Error::Arguments
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

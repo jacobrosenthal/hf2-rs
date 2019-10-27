@@ -1,6 +1,6 @@
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
+use core::convert::TryInto;
 use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
-use std::convert::TryInto;
 
 ///Compute checksum of a number of pages. The checksum algorithm used is CRC-16-CCITT.
 pub struct ChksumPages {
