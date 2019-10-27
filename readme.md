@@ -8,13 +8,29 @@ On macOS, it doesnt seem to require any other packages. Note this protocol works
 On linux if building libusb fails you can also try setting up the native `libusb` library where it can be found by `pkg-config` or `vcpkg`.
 
 ## used as a library
-
+no_std compatible, so requires a scratch buffer
 ```
-let chk: ChksumPagesResult = ChksumPages {
-    0x4000,
-    1,
-}.send(&d)?;
+let mut scratch = vec![0_u8; 64];
 
+let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
+println!("{:?}", bininfo);
+```
+Commands that don't have a response can use a zero size scratch buffer
+```
+let _ = ResetIntoApp {}.send(&mut [], &d)?;
+```
+Checksums are available as an iterator
+```
+let mut scratch = vec![0_u8; 1024];
+let checksums: ChksumPagesResponse = ChksumPages {
+    target_address,
+    num_pages,
+}
+.send(&mut scratch, &d)?;
+
+for checksum in checksums.iter() {
+    println!("{:?}", checksum);
+}
 ```
 
 ## used via cli
