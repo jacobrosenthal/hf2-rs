@@ -30,19 +30,19 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -p <pid>        
-    -v <vid>        
+    -p, --pid <pid>
+    -v, --vid <vid>
 
 SUBCOMMANDS:
-    bininfo                  This command states the current mode of the device
-    dmesg                    Return internal log buffer if any. The result is a character array.
-    flash                    flash
+    bininfo                  This command states the current mode of the device.
+    dmesg                    Return internal log buffer if any.
+    flash                    Flash
     help                     Prints this message or the help of the given subcommand(s)
-    info                     Various device information. The result is a character array. See INFO_UF2.TXT in UF2
-                             format for details.
+    info                     Various device information. See INFO_UF2.TXT in UF2 format for details.
     reset-into-app           Reset the device into user-space app.
-    reset-into-bootloader    Reset the device into bootloader, usually for flashing
-    verify                   verify
+    reset-into-bootloader    Reset the device into bootloader, usually for flashing. A BININFO command can be issued
+                             to verify that.
+    verify                   Verify
 ```
 It will attempt to autodetect a device by sending the bininfo command any hid devices it finds and using the first one that responds. I don't think that should be destructive, but you can also specify pid and vid (before the command for some reason..) instead.
 

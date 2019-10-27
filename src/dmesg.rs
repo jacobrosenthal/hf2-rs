@@ -1,7 +1,7 @@
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
 use scroll::{ctx, Pread, LE};
 
-///Return internal log buffer if any. The result is a character array.
+/// Return internal log buffer if any.
 pub struct Dmesg {}
 
 impl<'a> Commander<'a, DmesgResponse<'a>> for Dmesg {

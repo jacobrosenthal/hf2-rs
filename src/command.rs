@@ -21,12 +21,12 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for NoResponse {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct CommandResponse<'a> {
-    ///arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
+    /// Arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
     pub(crate) tag: u16,
     pub(crate) status: CommandResponseStatus, //    uint8_t status;
-    ///additional information In case of non-zero status
+    /// Additional information In case of non-zero status
     pub(crate) status_info: u8, // optional?
-    ///LE bytes
+    /// LE bytes
     pub(crate) data: &'a [u8],
 }
 
@@ -104,7 +104,7 @@ impl<'a> TryFrom<&'a [u8]> for CommandResponse<'a> {
     }
 }
 
-///Transmit a Command, command.data should already have been LE converted
+/// Transmit a Command, command.data should already have been LE converted
 pub(crate) fn xmit<T: HidMockable>(id: u32, tag: u16, data: &[u8], d: &T) -> Result<(), Error> {
     log::debug!("Command id:{:?}, tag:{:?}, data:{:02X?}", id, tag, data);
 
@@ -162,7 +162,7 @@ pub(crate) fn xmit<T: HidMockable>(id: u32, tag: u16, data: &[u8], d: &T) -> Res
     Ok(())
 }
 
-///Receive a CommandResponse, CommandResponse.data is not interpreted in any way.
+/// Receive a CommandResponse, CommandResponse.data is not interpreted in any way.
 pub(crate) fn rx<'a, T: HidMockable>(
     bitsnbytes: &'a mut [u8],
     d: &T,

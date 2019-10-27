@@ -22,7 +22,7 @@ impl TryFrom<u32> for BinInfoMode {
     }
 }
 
-/// This command states the current mode of the device:
+/// This command states the current mode of the device.
 pub struct BinInfo {}
 
 impl<'a> Commander<'a, BinInfoResponse> for BinInfo {

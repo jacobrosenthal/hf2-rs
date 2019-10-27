@@ -1,7 +1,7 @@
 use crate::command::{rx, xmit, Commander, Error, NoResponse};
 use scroll::{ctx, ctx::TryIntoCtx, Pwrite, LE};
 
-///Write a single page of flash memory. No Result.
+/// Write a single page of flash memory.
 #[derive(Debug, Clone, Copy)]
 pub struct WriteFlashPage<'a> {
     pub target_address: u32,

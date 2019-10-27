@@ -1,7 +1,7 @@
 use crate::command::{rx, xmit, Commander, Error, NoResponse};
 use scroll::{ctx::TryIntoCtx, Pwrite, LE};
 
-///Dual of READ WORDS, with the same constraints. No Result.
+/// Dual of READ WORDS, with the same constraints.
 #[derive(Debug, Clone, Copy)]
 pub struct WriteWords<'a> {
     pub target_address: u32,

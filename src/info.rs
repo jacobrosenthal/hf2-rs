@@ -1,7 +1,7 @@
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
 use scroll::{ctx, Pread, LE};
 
-/// Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
+/// Various device information. See INFO_UF2.TXT in UF2 format for details.
 pub struct Info {}
 
 impl<'a> Commander<'a, InfoResponse<'a>> for Info {
@@ -55,7 +55,7 @@ mod tests {
         ];
 
         let info_result = InfoResponse {
-info: "UF2 Bootloader v3.6.0 SFHWRO\r\nModel: PyGamer\r\nBoard-ID: SAMD51J19A-PyGamer-M4\r\n".into()
+info: "UF2 Bootloader v3.6.0 SFHWRO\r\nModel: PyGamer\r\nBoard-ID: SAMD51J19A-PyGamer-M4\r\n"
         };
 
         let res: InfoResponse = (data.as_slice()).pread_with::<InfoResponse>(0, LE).unwrap();

@@ -1,7 +1,7 @@
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
 use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
 
-///Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
+/// Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
 pub struct ReadWords {
     target_address: u32,
     num_words: u32,

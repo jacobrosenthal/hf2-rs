@@ -2,7 +2,7 @@ use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
 use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
 use std::convert::TryInto;
 
-///Compute checksum of a number of pages. Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
+///Compute checksum of a number of pages. The checksum algorithm used is CRC-16-CCITT.
 pub struct ChksumPages {
     pub target_address: u32,
     pub num_pages: u32,
@@ -49,7 +49,7 @@ impl<'a> Commander<'a, ChksumPagesResponse<'a>> for ChksumPages {
     }
 }
 
-///Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
+/// Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
 #[derive(Debug, PartialEq)]
 pub struct ChksumPagesResponse<'a> {
     chksums: &'a [u8],

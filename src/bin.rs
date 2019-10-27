@@ -258,21 +258,21 @@ fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
 #[allow(non_camel_case_types)]
 #[derive(StructOpt, Debug, PartialEq)]
 pub enum Cmd {
-    ///Reset the device into user-space app.
+    /// Reset the device into user-space app.
     resetIntoApp,
-    ///Reset the device into bootloader, usually for flashing
+    /// Reset the device into bootloader, usually for flashing. A BININFO command can be issued to verify that.
     resetIntoBootloader,
 
-    /// Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
+    /// Various device information. See INFO_UF2.TXT in UF2 format for details.
     info,
 
-    /// This command states the current mode of the device
+    /// This command states the current mode of the device.
     bininfo,
 
-    ///Return internal log buffer if any. The result is a character array.
+    /// Return internal log buffer if any.
     dmesg,
 
-    /// flash
+    /// Flash
     flash {
         #[structopt(short = "f", name = "file", long = "file")]
         file: PathBuf,
@@ -280,7 +280,7 @@ pub enum Cmd {
         address: u32,
     },
 
-    /// verify
+    /// Verify
     verify {
         #[structopt(short = "f", name = "file", long = "file")]
         file: PathBuf,
