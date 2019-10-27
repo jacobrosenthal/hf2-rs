@@ -3,18 +3,10 @@ use core::convert::TryFrom;
 use log;
 use scroll::{ctx, Pread, Pwrite, LE};
 
-pub fn send<'a, C, RES>(command: &C, d: &hidapi::HidDevice) -> Result<RES, Error>
-where
-    C: Commander<'a, RES>,
-    RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>,
-{
-    command.send(d)
-}
-
 pub trait Commander<'a, RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>> {
     const ID: u32;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<RES, Error>;
+    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<RES, Error>;
 }
 
 pub struct NoResponse {}
@@ -28,14 +20,14 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for NoResponse {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct CommandResponse {
+pub(crate) struct CommandResponse<'a> {
     ///arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
     pub(crate) tag: u16,
     pub(crate) status: CommandResponseStatus, //    uint8_t status;
     ///additional information In case of non-zero status
     pub(crate) status_info: u8, // optional?
     ///LE bytes
-    pub(crate) data: Vec<u8>,
+    pub(crate) data: &'a [u8],
 }
 
 #[derive(Debug, PartialEq)]
@@ -88,60 +80,33 @@ impl TryFrom<u8> for PacketType {
 }
 
 // doesnt know what the data is supposed to be decoded as
-// thats linked via the seq number outside, so we cant decode here
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
+// thats linked via the seq number outside, so we cant decode here, pass out slice
+impl<'a> TryFrom<&'a [u8]> for CommandResponse<'a> {
     type Error = Error;
-    fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        if this.len() < 4 {
+
+    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+        if value.len() < 4 {
             return Err(Error::Parse);
         }
 
         let mut offset = 0;
-        let tag = this.gread_with::<u16>(&mut offset, le)?;
-        let status: u8 = this.gread_with::<u8>(&mut offset, le)?;
+        let tag = value.gread_with::<u16>(&mut offset, scroll::LE)?;
+        let status: u8 = value.gread_with::<u8>(&mut offset, scroll::LE)?;
         let status = CommandResponseStatus::try_from(status)?;
-        let status_info = this.gread_with::<u8>(&mut offset, le)?;
+        let status_info = value.gread_with::<u8>(&mut offset, scroll::LE)?;
 
-        Ok((
-            CommandResponse {
-                tag,
-                status,
-                status_info,
-                data: this[offset..].to_vec(),
-            },
-            offset,
-        ))
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct Command {
-    ///Command ID
-    id: u32,
-    ///arbitrary number set by the host, for example as sequence number. The response should repeat the tag.
-    tag: u16,
-    ///reserved bytes in the command should be sent as zero and ignored by the device
-    _reserved0: u8,
-    ///reserved bytes in the command should be sent as zero and ignored by the device
-    _reserved1: u8,
-    ///LE bytes
-    data: Vec<u8>,
-}
-impl Command {
-    pub(crate) fn new(id: u32, tag: u16, data: Vec<u8>) -> Self {
-        Self {
-            id,
+        Ok(CommandResponse {
             tag,
-            _reserved0: 0,
-            _reserved1: 0,
-            data,
-        }
+            status,
+            status_info,
+            data: &value[offset..],
+        })
     }
 }
 
 ///Transmit a Command, command.data should already have been LE converted
-pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
-    log::debug!("{:?}", cmd);
+pub(crate) fn xmit<T: HidMockable>(id: u32, tag: u16, data: &[u8], d: &T) -> Result<(), Error> {
+    log::debug!("Command id:{:?}, tag:{:?}, data:{:02X?}", id, tag, data);
 
     //Packets are up to 64 bytes long
     let buffer = &mut [0_u8; 64];
@@ -150,18 +115,13 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
     let mut offset = 1;
 
     //command struct is 8 bytes
-    buffer.gwrite_with(cmd.id, &mut offset, LE)?;
-    buffer.gwrite_with(cmd.tag, &mut offset, LE)?;
-    buffer.gwrite_with(cmd._reserved0, &mut offset, LE)?;
-    buffer.gwrite_with(cmd._reserved1, &mut offset, LE)?;
+    buffer.gwrite_with(id, &mut offset, LE)?;
+    buffer.gwrite_with(tag, &mut offset, LE)?;
+    buffer.gwrite_with(0_u16, &mut offset, LE)?;
 
     //copy up to the first 55 bytes
-    let mut count = if cmd.data.len() > 55 {
-        55
-    } else {
-        cmd.data.len()
-    };
-    for (i, val) in cmd.data[..count].iter().enumerate() {
+    let mut count = if data.len() > 55 { 55 } else { data.len() };
+    for (i, val) in data[..count].iter().enumerate() {
         buffer[i + offset] = *val;
     }
 
@@ -169,7 +129,7 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
     offset += count;
 
     //subtract header from offset for packet size
-    if count == cmd.data.len() {
+    if count == data.len() {
         buffer[0] = (PacketType::Final as u8) << 6 | (offset - 1) as u8;
         log::debug!("tx: {:02X?}", &buffer[..offset]);
 
@@ -183,10 +143,10 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
     }
 
     //send the rest in chunks up to 63
-    for chunk in cmd.data[count..].chunks(64 - 1 as usize) {
+    for chunk in data[count..].chunks(64 - 1 as usize) {
         count += chunk.len();
 
-        if count == cmd.data.len() {
+        if count == data.len() {
             buffer[0] = (PacketType::Final as u8) << 6 | chunk.len() as u8;
         } else {
             buffer[0] = (PacketType::Inner as u8) << 6 | chunk.len() as u8;
@@ -203,11 +163,14 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
 }
 
 ///Receive a CommandResponse, CommandResponse.data is not interpreted in any way.
-pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
-    let mut bitsnbytes: Vec<u8> = vec![];
-
+pub(crate) fn rx<'a, T: HidMockable>(
+    bitsnbytes: &'a mut [u8],
+    d: &T,
+) -> Result<CommandResponse<'a>, Error> {
+    //grr. I think i need this allocation and copies to strip out the headers
     let buffer = &mut [0_u8; 64];
 
+    let mut offset = 0;
     // keep reading until Final packet
     while {
         let count = d.my_read(buffer)?;
@@ -231,15 +194,25 @@ pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
         );
 
         //skip the header byte and strip excess bytes remote is allowed to send
-        bitsnbytes.extend_from_slice(&buffer[1..=len]);
+        for (i, v) in buffer[1..=len].iter().enumerate() {
+            bitsnbytes[offset + i] = *v;
+        }
+
+        offset += len;
 
         //funky do while notation
         ptype == PacketType::Inner
     } {}
 
-    let resp = bitsnbytes.as_slice().pread_with::<CommandResponse>(0, LE)?;
+    let resp = CommandResponse::try_from(&bitsnbytes[..offset])?;
 
-    log::debug!("{:?}", resp);
+    log::debug!(
+        "CommandResponse tag: {:?}, status: {:?}, status_info: {:?}, data: {:02X?},",
+        resp.tag,
+        resp.status,
+        resp.status_info,
+        resp.data
+    );
 
     Ok(resp)
 }
@@ -357,13 +330,11 @@ mod tests {
         };
 
         let mock = MyMock {
-            reader: || vec![],
+            reader: || &[],
             writer,
         };
 
-        let command = Command::new(0x0006, 4, le_page);
-
-        xmit(command, &mock).unwrap();
+        xmit(0x0006, 4, &le_page, &mock).unwrap();
     }
 
     #[test]
@@ -391,7 +362,7 @@ mod tests {
             0x61, 0x6D, 0x65, 0x72, 0x2D, 0x4D, 0x34, 0x0D, 0x0A,
         ];
 
-        let reader = || -> Vec<u8> {
+        let reader = || -> &[u8] {
             static mut I: usize = 0;
 
             let res: &Vec<u8> = unsafe {
@@ -400,7 +371,7 @@ mod tests {
                 res
             };
 
-            res.to_vec()
+            res
         };
 
         let mock = MyMock {
@@ -412,10 +383,11 @@ mod tests {
             tag: 0x0004,
             status: CommandResponseStatus::Success,
             status_info: 0x00,
-            data: result.to_vec(),
+            data: &result.to_vec(),
         };
 
-        let rsp = rx(&mock).unwrap();
+        let mut scratch = vec![0u8; 1024];
+        let rsp = rx(&mut scratch, &mock).unwrap();
         assert_eq!(rsp, response);
     }
 }

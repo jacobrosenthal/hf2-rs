@@ -1,4 +1,4 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
+use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
 use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
 
 ///Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
@@ -24,47 +24,44 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ReadWords {
     }
 }
 
-impl<'a> Commander<'a, ReadWordsResponse> for ReadWords {
+impl<'a> Commander<'a, ReadWordsResponse<'a>> for ReadWords {
     const ID: u32 = 0x0008;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<ReadWordsResponse, Error> {
-        let mut data = vec![0_u8; 8];
+    fn send(
+        &self,
+        mut data: &'a mut [u8],
+        d: &hidapi::HidDevice,
+    ) -> Result<ReadWordsResponse<'a>, Error> {
         let _ = self.try_into_ctx(&mut data, LE)?;
 
-        let command = Command::new(Self::ID, 0, data);
+        xmit(Self::ID, 0, &data, d)?;
 
-        xmit(command, d)?;
-
-        let rsp = rx(d)?;
+        let rsp = rx(data, d)?;
 
         if rsp.status != CommandResponseStatus::Success {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: ReadWordsResponse =
-            (rsp.data.as_slice()).pread_with::<ReadWordsResponse>(0, LE)?;
+        let res: ReadWordsResponse = rsp.data.pread_with::<ReadWordsResponse>(0, LE)?;
 
         Ok(res)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ReadWordsResponse {
-    pub words: Vec<u32>,
+pub struct ReadWordsResponse<'a> {
+    pub words: &'a [u8],
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResponse {
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResponse<'a> {
     type Error = Error;
-    fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
+    fn try_from_ctx(this: &'a [u8], _le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
         if this.len() < 4 {
             return Err(Error::Parse);
         }
 
-        let mut words: Vec<u32> = vec![0; this.len() / 4];
+        let offset = 0;
 
-        let mut offset = 0;
-        this.gread_inout_with(&mut offset, &mut words, le)?;
-
-        Ok((ReadWordsResponse { words }, offset))
+        Ok((ReadWordsResponse { words: this }, offset))
     }
 }

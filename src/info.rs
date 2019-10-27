@@ -1,45 +1,41 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
+use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
 use scroll::{ctx, Pread, LE};
 
 /// Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
 pub struct Info {}
 
-impl<'a> Commander<'a, InfoResponse> for Info {
+impl<'a> Commander<'a, InfoResponse<'a>> for Info {
     const ID: u32 = 0x0002;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<InfoResponse, Error> {
-        let command = Command::new(Self::ID, 0, vec![]);
+    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<InfoResponse<'a>, Error> {
+        xmit(Self::ID, 0, &data, d)?;
 
-        xmit(command, d)?;
-
-        let rsp = rx(d)?;
+        let rsp = rx(data, d)?;
 
         if rsp.status != CommandResponseStatus::Success {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: InfoResponse = (rsp.data.as_slice()).pread_with::<InfoResponse>(0, LE)?;
+        let res: InfoResponse = rsp.data.pread_with::<InfoResponse>(0, LE)?;
 
         Ok(res)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct InfoResponse {
-    pub info: String,
+pub struct InfoResponse<'a> {
+    pub info: &'a str,
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResponse {
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResponse<'a> {
     type Error = Error;
-    fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        let mut bytes = vec![0; this.len()];
+    fn try_from_ctx(this: &'a [u8], _le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
+        let offset = 0;
 
-        let mut offset = 0;
-        this.gread_inout_with(&mut offset, &mut bytes, le)?;
+        //u8, no endianness
+        let info = core::str::from_utf8(&this)?;
 
-        let info = core::str::from_utf8(&bytes)?;
-
-        Ok((InfoResponse { info: info.into() }, offset))
+        Ok((InfoResponse { info }, offset))
     }
 }
 

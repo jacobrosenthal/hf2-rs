@@ -32,6 +32,7 @@ fn main() -> Result<(), Error> {
         0x2886=>vec![0x000D],
         0x1B4F=>vec![0x0D23, 0x0D22],
         0x1209=>vec![0x4D44, 0x2017],
+
         };
 
         for device_info in api.devices() {
@@ -67,23 +68,28 @@ fn main() -> Result<(), Error> {
 }
 
 fn reset_into_app(d: &HidDevice) -> Result<(), Error> {
-    let _ = ResetIntoApp {}.send(&d)?;
+    let _ = ResetIntoApp {}.send(&mut [], &d)?;
     Ok(())
 }
 
 fn reset_into_bootloader(d: &HidDevice) -> Result<(), Error> {
-    let _ = ResetIntoBootloader {}.send(&d);
+    let _ = ResetIntoBootloader {}.send(&mut [], &d)?;
     Ok(())
 }
 
 fn info(d: &HidDevice) -> Result<(), Error> {
-    let info: InfoResponse = Info {}.send(&d)?;
+    let mut scratch = vec![0_u8; 128];
+
+    let info: InfoResponse = Info {}.send(&mut scratch, &d)?;
     println!("{:?}", info);
     Ok(())
 }
 
 fn bininfo(d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+    let mut scratch = vec![0_u8; 64];
+
+    let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
+
     println!(
         "{:?} {:?}kb",
         bininfo,
@@ -93,17 +99,22 @@ fn bininfo(d: &HidDevice) -> Result<(), Error> {
 }
 
 fn dmesg(d: &HidDevice) -> Result<(), Error> {
+    let mut scratch = vec![0_u8; 64];
+
     // todo, test. not supported on my board
-    let dmesg: DmesgResponse = Dmesg {}.send(&d)?;
+    let dmesg: DmesgResponse = Dmesg {}.send(&mut scratch, &d)?;
+
     println!("{:?}", dmesg);
     Ok(())
 }
 
 fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+    let mut scratch = vec![0_u8; 1024];
+
+    let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&d)?;
+        let _ = StartFlash {}.send(&mut [], &d)?;
     }
 
     //shouldnt there be a chunking interator for this?
@@ -132,12 +143,15 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         } else {
             max_pages
         };
-        let chk: ChksumPagesResponse = ChksumPages {
+        let checksums: ChksumPagesResponse = ChksumPages {
             target_address,
             num_pages,
         }
-        .send(&d)?;
-        device_checksums.extend_from_slice(&chk.chksums[..]);
+        .send(&mut scratch, &d)?;
+
+        for checksum in checksums.iter() {
+            device_checksums.push(checksum)
+        }
     }
 
     // only write changed contents
@@ -149,22 +163,24 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
             let target_address = address + bininfo.flash_page_size * page_index as u32;
             let _ = WriteFlashPage {
                 target_address,
-                data: page.to_vec(),
+                data: page,
             }
-            .send(&d)?;
+            .send(&mut scratch, &d)?;
         }
     }
 
     println!("Success");
-    let _ = ResetIntoApp {}.send(&d)?;
+    let _ = ResetIntoApp {}.send(&mut [], &d)?;
     Ok(())
 }
 
 fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+    let mut scratch = vec![0_u8; 1024];
+
+    let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&d)?;
+        let _ = StartFlash {}.send(&mut [], &d)?;
     }
 
     //shouldnt there be a chunking interator for this?
@@ -193,12 +209,15 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         } else {
             max_pages
         };
-        let chk: ChksumPagesResponse = ChksumPages {
+        let checksums: ChksumPagesResponse = ChksumPages {
             target_address,
             num_pages,
         }
-        .send(&d)?;
-        device_checksums.extend_from_slice(&chk.chksums[..]);
+        .send(&mut scratch, &d)?;
+
+        for checksum in checksums.iter() {
+            device_checksums.push(checksum)
+        }
     }
 
     let mut binary_checksums = vec![];
