@@ -8,13 +8,29 @@ On macOS, it doesnt seem to require any other packages. Note this protocol works
 On linux if building libusb fails you can also try setting up the native `libusb` library where it can be found by `pkg-config` or `vcpkg`.
 
 ## used as a library
-
+no_std compatible, so requires a scratch buffer
 ```
-let chk: ChksumPagesResult = ChksumPages {
-    0x4000,
-    1,
-}.send(&d)?;
+let mut scratch = vec![0_u8; 64];
 
+let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
+println!("{:?}", bininfo);
+```
+The two reset commands, which have don't actually send or even attempt to receive data, can actually use a zero size scratch buffer.
+```
+let _ = ResetIntoApp {}.send(&mut [], &d)?;
+```
+Checksums are available as an iterator
+```
+let mut scratch = vec![0_u8; 1024];
+let checksums: ChksumPagesResponse = ChksumPages {
+    target_address,
+    num_pages,
+}
+.send(&mut scratch, &d)?;
+
+for checksum in checksums.iter() {
+    println!("{:?}", checksum);
+}
 ```
 
 ## used via cli
@@ -30,19 +46,19 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -p <pid>        
-    -v <vid>        
+    -p, --pid <pid>
+    -v, --vid <vid>
 
 SUBCOMMANDS:
-    bininfo                  This command states the current mode of the device
-    dmesg                    Return internal log buffer if any. The result is a character array.
-    flash                    flash
+    bininfo                  This command states the current mode of the device.
+    dmesg                    Return internal log buffer if any.
+    flash                    Flash
     help                     Prints this message or the help of the given subcommand(s)
-    info                     Various device information. The result is a character array. See INFO_UF2.TXT in UF2
-                             format for details.
+    info                     Various device information. See INFO_UF2.TXT in UF2 format for details.
     reset-into-app           Reset the device into user-space app.
-    reset-into-bootloader    Reset the device into bootloader, usually for flashing
-    verify                   verify
+    reset-into-bootloader    Reset the device into bootloader, usually for flashing. A BININFO command can be issued
+                             to verify that.
+    verify                   Verify
 ```
 It will attempt to autodetect a device by sending the bininfo command any hid devices it finds and using the first one that responds. I don't think that should be destructive, but you can also specify pid and vid (before the command for some reason..) instead.
 

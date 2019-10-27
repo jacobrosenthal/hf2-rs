@@ -1,14 +1,15 @@
-use crate::command::{rx, xmit, Command, Commander, Error, NoResponse};
+use crate::command::{rx, xmit, Commander, Error, NoResponse};
 use scroll::{ctx::TryIntoCtx, Pwrite, LE};
 
-///Dual of READ WORDS, with the same constraints. No Result.
-pub struct WriteWords {
+/// Dual of READ WORDS, with the same constraints.
+#[derive(Debug, Clone, Copy)]
+pub struct WriteWords<'a> {
     pub target_address: u32,
     pub num_words: u32,
-    pub words: Vec<u32>,
+    pub words: &'a [u32],
 }
 
-impl<'a> TryIntoCtx<::scroll::Endian> for &'a WriteWords {
+impl<'a> TryIntoCtx<::scroll::Endian> for &'a WriteWords<'a> {
     type Error = ::scroll::Error;
 
     fn try_into_ctx(
@@ -21,7 +22,7 @@ impl<'a> TryIntoCtx<::scroll::Endian> for &'a WriteWords {
         dst.gwrite_with(self.target_address, &mut offset, ctx)?;
         dst.gwrite_with(self.num_words, &mut offset, ctx)?;
 
-        for i in &self.words {
+        for i in self.words {
             dst.gwrite_with(i, &mut offset, ctx)?;
         }
 
@@ -29,18 +30,17 @@ impl<'a> TryIntoCtx<::scroll::Endian> for &'a WriteWords {
     }
 }
 
-impl<'a> Commander<'a, NoResponse> for WriteWords {
+impl<'a> Commander<'a, NoResponse> for WriteWords<'a> {
     const ID: u32 = 0x0009;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<NoResponse, Error> {
-        let mut data = vec![0_u8; self.words.len() * 4 + 8];
-        let _ = self.try_into_ctx(&mut data, LE)?;
+    fn send(&self, mut data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<NoResponse, Error> {
+        debug_assert!(data.len() >= self.words.len() * 4 + 8);
 
-        let command = Command::new(Self::ID, 0, data);
+        let offset = self.try_into_ctx(&mut data, LE)?;
 
-        xmit(command, d)?;
+        xmit(Self::ID, 0, &data[0..offset], d)?;
 
-        let _ = rx(d)?;
+        let _ = rx(data, d)?;
 
         Ok(NoResponse {})
     }

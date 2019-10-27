@@ -32,6 +32,7 @@ fn main() -> Result<(), Error> {
         0x2886=>vec![0x000D],
         0x1B4F=>vec![0x0D23, 0x0D22],
         0x1209=>vec![0x4D44, 0x2017],
+
         };
 
         for device_info in api.devices() {
@@ -67,23 +68,28 @@ fn main() -> Result<(), Error> {
 }
 
 fn reset_into_app(d: &HidDevice) -> Result<(), Error> {
-    let _ = ResetIntoApp {}.send(&d)?;
+    let _ = ResetIntoApp {}.send(&mut [], &d)?;
     Ok(())
 }
 
 fn reset_into_bootloader(d: &HidDevice) -> Result<(), Error> {
-    let _ = ResetIntoBootloader {}.send(&d);
+    let _ = ResetIntoBootloader {}.send(&mut [], &d)?;
     Ok(())
 }
 
 fn info(d: &HidDevice) -> Result<(), Error> {
-    let info: InfoResponse = Info {}.send(&d)?;
+    let mut scratch = vec![0_u8; 128];
+
+    let info: InfoResponse = Info {}.send(&mut scratch, &d)?;
     println!("{:?}", info);
     Ok(())
 }
 
 fn bininfo(d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+    let mut scratch = vec![0_u8; 64];
+
+    let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
+
     println!(
         "{:?} {:?}kb",
         bininfo,
@@ -93,24 +99,30 @@ fn bininfo(d: &HidDevice) -> Result<(), Error> {
 }
 
 fn dmesg(d: &HidDevice) -> Result<(), Error> {
+    let mut scratch = vec![0_u8; 64];
+
     // todo, test. not supported on my board
-    let dmesg: DmesgResponse = Dmesg {}.send(&d)?;
+    let dmesg: DmesgResponse = Dmesg {}.send(&mut scratch, &d)?;
+
     println!("{:?}", dmesg);
     Ok(())
 }
 
 fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+    let mut scratch = vec![0_u8; 1024];
+
+    let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
     log::debug!("{:?}", bininfo);
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&d)?;
+        let _ = StartFlash {}.send(&mut scratch, &d)?;
     }
 
+    //todo map to an error?
     //shouldnt there be a chunking interator for this?
-    let mut f = File::open(file)?;
+    let mut f = File::open(file).unwrap();
     let mut binary = Vec::new();
-    f.read_to_end(&mut binary)?;
+    f.read_to_end(&mut binary).unwrap();
 
     //pad zeros to page size
     let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;
@@ -139,12 +151,15 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         } else {
             max_pages
         };
-        let chk: ChksumPagesResponse = ChksumPages {
+        let checksums: ChksumPagesResponse = ChksumPages {
             target_address,
             num_pages,
         }
-        .send(&d)?;
-        device_checksums.extend_from_slice(&chk.chksums[..]);
+        .send(&mut scratch, &d)?;
+
+        for checksum in checksums.iter() {
+            device_checksums.push(checksum)
+        }
     }
     log::debug!("checksums received {:04X?}", device_checksums);
 
@@ -164,30 +179,33 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
             let target_address = address + bininfo.flash_page_size * page_index as u32;
             let _ = WriteFlashPage {
                 target_address,
-                data: page.to_vec(),
+                data: page,
             }
-            .send(&d)?;
+            .send(&mut scratch, &d)?;
         } else {
             log::debug!("not updating page {}", page_index,);
         }
     }
 
     println!("Success");
-    let _ = ResetIntoApp {}.send(&d)?;
+    let _ = ResetIntoApp {}.send(&mut [], &d)?;
     Ok(())
 }
 
 fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+    let mut scratch = vec![0_u8; 1024];
+
+    let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&d)?;
+        let _ = StartFlash {}.send(&mut scratch, &d)?;
     }
 
+    //todo map to an error?
     //shouldnt there be a chunking interator for this?
-    let mut f = File::open(file)?;
+    let mut f = File::open(file).unwrap();
     let mut binary = Vec::new();
-    f.read_to_end(&mut binary)?;
+    f.read_to_end(&mut binary).unwrap();
 
     //pad zeros to page size
     let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;
@@ -210,12 +228,15 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         } else {
             max_pages
         };
-        let chk: ChksumPagesResponse = ChksumPages {
+        let checksums: ChksumPagesResponse = ChksumPages {
             target_address,
             num_pages,
         }
-        .send(&d)?;
-        device_checksums.extend_from_slice(&chk.chksums[..]);
+        .send(&mut scratch, &d)?;
+
+        for checksum in checksums.iter() {
+            device_checksums.push(checksum)
+        }
     }
 
     let mut binary_checksums = vec![];
@@ -256,21 +277,21 @@ fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
 #[allow(non_camel_case_types)]
 #[derive(StructOpt, Debug, PartialEq)]
 pub enum Cmd {
-    ///Reset the device into user-space app.
+    /// Reset the device into user-space app.
     resetIntoApp,
-    ///Reset the device into bootloader, usually for flashing
+    /// Reset the device into bootloader, usually for flashing. A BININFO command can be issued to verify that.
     resetIntoBootloader,
 
-    /// Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
+    /// Various device information. See INFO_UF2.TXT in UF2 format for details.
     info,
 
-    /// This command states the current mode of the device
+    /// This command states the current mode of the device.
     bininfo,
 
-    ///Return internal log buffer if any. The result is a character array.
+    /// Return internal log buffer if any.
     dmesg,
 
-    /// flash
+    /// Flash
     flash {
         #[structopt(short = "f", name = "file", long = "file")]
         file: PathBuf,
@@ -278,7 +299,7 @@ pub enum Cmd {
         address: u32,
     },
 
-    /// verify
+    /// Verify
     verify {
         #[structopt(short = "f", name = "file", long = "file")]
         file: PathBuf,

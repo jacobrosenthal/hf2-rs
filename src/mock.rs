@@ -2,9 +2,9 @@ use hidapi::HidDevice;
 use hidapi::HidResult;
 
 #[allow(dead_code)]
-pub struct MyMock<R, W>
+pub struct MyMock<'a, R, W>
 where
-    R: Fn() -> Vec<u8>,
+    R: Fn() -> &'a [u8],
     W: Fn(&[u8]) -> usize,
 {
     pub reader: R,
@@ -25,9 +25,9 @@ impl HidMockable for HidDevice {
     }
 }
 
-impl<R, W> HidMockable for MyMock<R, W>
+impl<'a, R, W> HidMockable for MyMock<'a, R, W>
 where
-    R: Fn() -> Vec<u8>,
+    R: Fn() -> &'a [u8],
     W: Fn(&[u8]) -> usize,
 {
     fn my_write(&self, data: &[u8]) -> HidResult<usize> {

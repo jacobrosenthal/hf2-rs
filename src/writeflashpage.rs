@@ -1,13 +1,14 @@
-use crate::command::{rx, xmit, Command, Commander, Error, NoResponse};
+use crate::command::{rx, xmit, Commander, Error, NoResponse};
 use scroll::{ctx, ctx::TryIntoCtx, Pwrite, LE};
 
-///Write a single page of flash memory. No Result.
-pub struct WriteFlashPage {
+/// Write a single page of flash memory.
+#[derive(Debug, Clone, Copy)]
+pub struct WriteFlashPage<'a> {
     pub target_address: u32,
-    pub data: Vec<u8>,
+    pub data: &'a [u8],
 }
 
-impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a WriteFlashPage {
+impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a WriteFlashPage<'a> {
     type Error = ::scroll::Error;
 
     fn try_into_ctx(
@@ -19,7 +20,7 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a WriteFlashPage {
 
         dst.gwrite_with(self.target_address, &mut offset, LE)?;
 
-        for i in &self.data {
+        for i in self.data {
             dst.gwrite_with(i, &mut offset, ctx)?;
         }
 
@@ -27,18 +28,17 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a WriteFlashPage {
     }
 }
 
-impl<'a> Commander<'a, NoResponse> for WriteFlashPage {
+impl<'a> Commander<'a, NoResponse> for WriteFlashPage<'a> {
     const ID: u32 = 0x0006;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<NoResponse, Error> {
-        let mut data = vec![0_u8; self.data.len() + 4];
-        let _ = self.try_into_ctx(&mut data, LE)?;
+    fn send(&self, mut data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<NoResponse, Error> {
+        debug_assert!(data.len() >= self.data.len() + 4);
 
-        let command = Command::new(Self::ID, 0, data);
+        let offset = self.try_into_ctx(&mut data, LE)?;
 
-        xmit(command, d)?;
+        xmit(Self::ID, 0, &data[0..offset], d)?;
 
-        let _ = rx(d)?;
+        let _ = rx(data, d)?;
 
         Ok(NoResponse {})
     }

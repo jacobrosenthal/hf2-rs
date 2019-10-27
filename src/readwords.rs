@@ -1,10 +1,12 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
+use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
+
+use core::convert::TryInto;
 use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
 
-///Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
+/// Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
 pub struct ReadWords {
-    target_address: u32,
-    num_words: u32,
+    pub target_address: u32,
+    pub num_words: u32,
 }
 
 impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ReadWords {
@@ -24,47 +26,54 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ReadWords {
     }
 }
 
-impl<'a> Commander<'a, ReadWordsResponse> for ReadWords {
+impl<'a> Commander<'a, ReadWordsResponse<'a>> for ReadWords {
     const ID: u32 = 0x0008;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<ReadWordsResponse, Error> {
-        let mut data = vec![0_u8; 8];
-        let _ = self.try_into_ctx(&mut data, LE)?;
+    fn send(
+        &self,
+        mut data: &'a mut [u8],
+        d: &hidapi::HidDevice,
+    ) -> Result<ReadWordsResponse<'a>, Error> {
+        let offset = self.try_into_ctx(&mut data, LE)?;
 
-        let command = Command::new(Self::ID, 0, data);
+        xmit(Self::ID, 0, &data[0..offset], d)?;
 
-        xmit(command, d)?;
-
-        let rsp = rx(d)?;
+        let rsp = rx(data, d)?;
 
         if rsp.status != CommandResponseStatus::Success {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: ReadWordsResponse =
-            (rsp.data.as_slice()).pread_with::<ReadWordsResponse>(0, LE)?;
+        let res: ReadWordsResponse = rsp.data.pread_with::<ReadWordsResponse>(0, LE)?;
 
         Ok(res)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ReadWordsResponse {
-    pub words: Vec<u32>,
+pub struct ReadWordsResponse<'a> {
+    words: &'a [u8],
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResponse {
+impl<'a> ReadWordsResponse<'a> {
+    pub fn iter(&'a self) -> impl 'a + Iterator<Item = u32> {
+        self.words.chunks_exact(4).map(|chunk| {
+            //no panic, chunks exact is always &[u8; 2]
+            let blah: &[u8; 4] = chunk.try_into().unwrap();
+            u32::from_le_bytes(*blah)
+        })
+    }
+}
+
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResponse<'a> {
     type Error = Error;
-    fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
+    fn try_from_ctx(this: &'a [u8], _le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
         if this.len() < 4 {
             return Err(Error::Parse);
         }
 
-        let mut words: Vec<u32> = vec![0; this.len() / 4];
+        let offset = 0;
 
-        let mut offset = 0;
-        this.gread_inout_with(&mut offset, &mut words, le)?;
-
-        Ok((ReadWordsResponse { words }, offset))
+        Ok((ReadWordsResponse { words: this }, offset))
     }
 }

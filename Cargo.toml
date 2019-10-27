@@ -23,7 +23,7 @@ crc = {git="https://github.com/mrhooray/crc-rs.git", rev="878fcc85b9b04fb4af8c3f
 [dependencies]
 structopt = { version = "0.3"}
 hidapi = "0.5.2"
-scroll = { version = "0.10.0", features = ["derive"] }
+scroll = { version = "0.10.1", default-features=false,features = ["derive"] }
 crc = "2.0.0"
 log = "0.4.6"
 pretty_env_logger = "0.3.0"
