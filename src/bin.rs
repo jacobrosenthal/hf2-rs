@@ -68,19 +68,20 @@ fn main() -> Result<(), Error> {
 }
 
 fn reset_into_app(d: &HidDevice) -> Result<(), Error> {
-    let _ = ResetIntoApp {}.send(&mut [], &d)?;
+    let _ = send(ResetIntoApp {}, &mut [], &d)?;
     Ok(())
 }
 
 fn reset_into_bootloader(d: &HidDevice) -> Result<(), Error> {
-    let _ = ResetIntoBootloader {}.send(&mut [], &d)?;
+    let _ = send(ResetIntoBootloader {}, &mut [], &d)?;
     Ok(())
 }
 
 fn info(d: &HidDevice) -> Result<(), Error> {
     let mut scratch = vec![0_u8; 128];
 
-    let info: InfoResponse = Info {}.send(&mut scratch, &d)?;
+    let info: Option<InfoResponse> = send(Info {}, &mut scratch, &d)?;
+    let info = info.unwrap();
     println!("{:?}", info);
     Ok(())
 }
@@ -88,8 +89,8 @@ fn info(d: &HidDevice) -> Result<(), Error> {
 fn bininfo(d: &HidDevice) -> Result<(), Error> {
     let mut scratch = vec![0_u8; 64];
 
-    let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
-
+    let bininfo: Option<BinInfoResponse> = send(BinInfo {}, &mut scratch, &d)?;
+    let bininfo = bininfo.unwrap();
     println!(
         "{:?} {:?}kb",
         bininfo,
@@ -102,8 +103,8 @@ fn dmesg(d: &HidDevice) -> Result<(), Error> {
     let mut scratch = vec![0_u8; 64];
 
     // todo, test. not supported on my board
-    let dmesg: DmesgResponse = Dmesg {}.send(&mut scratch, &d)?;
-
+    let dmesg: Option<DmesgResponse> = send(Dmesg {}, &mut scratch, &d)?;
+    let dmesg = dmesg.unwrap();
     println!("{:?}", dmesg);
     Ok(())
 }
@@ -111,10 +112,11 @@ fn dmesg(d: &HidDevice) -> Result<(), Error> {
 fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
     let mut scratch = vec![0_u8; 1024];
 
-    let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
+    let bininfo: Option<BinInfoResponse> = send(BinInfo {}, &mut scratch, &d)?;
+    let bininfo = bininfo.unwrap();
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&mut [], &d)?;
+        let _ = send(StartFlash {}, &mut [], &d)?;
     }
 
     //todo map to an error?
@@ -144,11 +146,15 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         } else {
             max_pages
         };
-        let checksums: ChksumPagesResponse = ChksumPages {
-            target_address,
-            num_pages,
-        }
-        .send(&mut scratch, &d)?;
+        let checksums: Option<ChksumPagesResponse> = send(
+            ChksumPages {
+                target_address,
+                num_pages,
+            },
+            &mut scratch,
+            &d,
+        )?;
+        let checksums = checksums.unwrap();
 
         for checksum in checksums.iter() {
             device_checksums.push(checksum)
@@ -162,26 +168,30 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
 
         if digest1.sum16() != device_checksums[page_index] {
             let target_address = address + bininfo.flash_page_size * page_index as u32;
-            let _ = WriteFlashPage {
-                target_address,
-                data: page,
-            }
-            .send(&mut scratch, &d)?;
+            let _ = send(
+                WriteFlashPage {
+                    target_address,
+                    data: page,
+                },
+                &mut scratch,
+                &d,
+            )?;
         }
     }
 
     println!("Success");
-    let _ = ResetIntoApp {}.send(&mut [], &d)?;
+    let _ = send(ResetIntoApp {}, &mut [], &d)?;
     Ok(())
 }
 
 fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
     let mut scratch = vec![0_u8; 1024];
 
-    let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
+    let bininfo: Option<BinInfoResponse> = send(BinInfo {}, &mut scratch, &d)?;
+    let bininfo = bininfo.unwrap();
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&mut [], &d)?;
+        let _ = send(StartFlash {}, &mut [], &d)?;
     }
 
     //todo map to an error?
@@ -211,11 +221,15 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         } else {
             max_pages
         };
-        let checksums: ChksumPagesResponse = ChksumPages {
-            target_address,
-            num_pages,
-        }
-        .send(&mut scratch, &d)?;
+        let checksums: Option<ChksumPagesResponse> = send(
+            ChksumPages {
+                target_address,
+                num_pages,
+            },
+            &mut scratch,
+            &d,
+        )?;
+        let checksums = checksums.unwrap();
 
         for checksum in checksums.iter() {
             device_checksums.push(checksum)

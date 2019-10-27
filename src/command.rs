@@ -3,10 +3,47 @@ use core::convert::TryFrom;
 use log;
 use scroll::{ctx, Pread, Pwrite, LE};
 
+pub fn send<'a, C, RES>(
+    arg: C,
+    mut data: &'a mut [u8],
+    d: &hidapi::HidDevice,
+) -> Result<Option<RES>, Error>
+where
+    C: Commander<'a, RES> + ctx::TryIntoCtx<::scroll::Endian> + Copy + core::fmt::Debug,
+    RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>,
+    <RES as scroll::ctx::TryFromCtx<'a, scroll::Endian>>::Error: core::convert::From<scroll::Error>,
+    Error: core::convert::From<<C as scroll::ctx::TryIntoCtx<scroll::Endian>>::Error>
+        + core::convert::From<<RES as scroll::ctx::TryFromCtx<'a, scroll::Endian>>::Error>,
+{
+    log::debug!("{:02X?}", arg);
+
+    let offset: usize = arg.try_into_ctx(&mut data, LE)?;
+
+    xmit(C::ID, 0, &data[..offset], d)?;
+    if !C::RESPONSE {
+        return Ok(None);
+    }
+
+    let rsp = rx(data, d)?;
+
+    if rsp.status != CommandResponseStatus::Success {
+        return Err(Error::CommandNotRecognized);
+    }
+
+    if !C::RESULT {
+        return Ok(None);
+    }
+
+    let res: RES = rsp.data.pread_with::<RES>(0, LE)?;
+    Ok(Some(res))
+}
+
 pub trait Commander<'a, RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>> {
     const ID: u32;
+    const RESPONSE: bool;
+    const RESULT: bool;
 
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<RES, Error>;
+    // fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<Option<RES>, Error>;
 }
 
 pub struct NoResponse {}

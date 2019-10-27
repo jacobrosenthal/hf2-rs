@@ -1,27 +1,37 @@
-use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
-use scroll::{ctx, Pread, LE};
+use crate::command::{send, Commander, Error};
+use scroll::ctx;
 
 /// Return internal log buffer if any.
+#[derive(Debug, Clone, Copy)]
 pub struct Dmesg {}
 
-impl<'a> Commander<'a, DmesgResponse<'a>> for Dmesg {
-    const ID: u32 = 0x0010;
+impl<'a> ctx::TryIntoCtx<::scroll::Endian> for Dmesg {
+    type Error = ::scroll::Error;
 
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<DmesgResponse<'a>, Error> {
-        xmit(Self::ID, 0, &data, d)?;
+    fn try_into_ctx(
+        self,
+        _dst: &mut [u8],
+        _ctx: ::scroll::Endian,
+    ) -> ::scroll::export::result::Result<usize, Self::Error> {
+        let offset = 0;
 
-        let rsp = rx(data, d)?;
-
-        if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::CommandNotRecognized);
-        }
-
-        let res: DmesgResponse = rsp.data.pread_with::<DmesgResponse>(0, LE)?;
-
-        Ok(res)
+        Ok(offset)
     }
 }
 
+impl<'a> Commander<'a, DmesgResponse<'a>> for Dmesg {
+    const ID: u32 = 0x0010;
+    const RESPONSE: bool = true;
+    const RESULT: bool = true;
+
+    // fn send(
+    //     &self,
+    //     mut data: &'a mut [u8],
+    //     d: &hidapi::HidDevice,
+    // ) -> Result<Option<DmesgResponse<'a>>, Error> {
+    //     send(*self, data, d)
+    // }
+}
 #[derive(Debug, PartialEq)]
 pub struct DmesgResponse<'a> {
     pub logs: &'a str,

@@ -1,25 +1,36 @@
-use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
+use crate::command::{send, Commander, Error};
 use scroll::{ctx, Pread, LE};
 
 /// Various device information. See INFO_UF2.TXT in UF2 format for details.
+#[derive(Debug, Clone, Copy)]
 pub struct Info {}
+
+impl<'a> ctx::TryIntoCtx<::scroll::Endian> for Info {
+    type Error = ::scroll::Error;
+
+    fn try_into_ctx(
+        self,
+        _dst: &mut [u8],
+        _ctx: ::scroll::Endian,
+    ) -> ::scroll::export::result::Result<usize, Self::Error> {
+        let offset = 0;
+
+        Ok(offset)
+    }
+}
 
 impl<'a> Commander<'a, InfoResponse<'a>> for Info {
     const ID: u32 = 0x0002;
+    const RESPONSE: bool = true;
+    const RESULT: bool = true;
 
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<InfoResponse<'a>, Error> {
-        xmit(Self::ID, 0, &data, d)?;
-
-        let rsp = rx(data, d)?;
-
-        if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::CommandNotRecognized);
-        }
-
-        let res: InfoResponse = rsp.data.pread_with::<InfoResponse>(0, LE)?;
-
-        Ok(res)
-    }
+    // fn send(
+    //     &self,
+    //     mut data: &'a mut [u8],
+    //     d: &hidapi::HidDevice,
+    // ) -> Result<Option<InfoResponse<'a>>, Error> {
+    //     send(*self, data, d)
+    // }
 }
 
 #[derive(Debug, PartialEq)]

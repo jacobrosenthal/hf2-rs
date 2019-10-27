@@ -1,6 +1,6 @@
-use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
+use crate::command::{send, Commander, Error};
 use core::convert::TryFrom;
-use scroll::{ctx, Pread, LE};
+use scroll::{ctx, Pread};
 
 #[derive(Debug, PartialEq)]
 pub enum BinInfoMode {
@@ -23,24 +23,35 @@ impl TryFrom<u32> for BinInfoMode {
 }
 
 /// This command states the current mode of the device.
+#[derive(Debug, Clone, Copy)]
 pub struct BinInfo {}
+
+impl<'a> ctx::TryIntoCtx<::scroll::Endian> for BinInfo {
+    type Error = ::scroll::Error;
+
+    fn try_into_ctx(
+        self,
+        _dst: &mut [u8],
+        _ctx: ::scroll::Endian,
+    ) -> ::scroll::export::result::Result<usize, Self::Error> {
+        let offset = 0;
+
+        Ok(offset)
+    }
+}
 
 impl<'a> Commander<'a, BinInfoResponse> for BinInfo {
     const ID: u32 = 0x0001;
+    const RESPONSE: bool = true;
+    const RESULT: bool = true;
 
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<BinInfoResponse, Error> {
-        xmit(Self::ID, 0, &data, d)?;
-
-        let rsp = rx(data, d)?;
-
-        if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::CommandNotRecognized);
-        }
-
-        let res: BinInfoResponse = rsp.data.pread_with::<BinInfoResponse>(0, LE)?;
-
-        Ok(res)
-    }
+    // fn send(
+    //     &self,
+    //     mut data: &'a mut [u8],
+    //     d: &hidapi::HidDevice,
+    // ) -> Result<Option<BinInfoResponse>, Error> {
+    //     send(*self, data, d)
+    // }
 }
 
 #[derive(Debug, PartialEq)]

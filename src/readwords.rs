@@ -1,7 +1,8 @@
-use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
-use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
+use crate::command::{send, Commander, Error};
+use scroll::{ctx, Pwrite};
 
 /// Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.
+#[derive(Debug, Clone, Copy)]
 pub struct ReadWords {
     target_address: u32,
     num_words: u32,
@@ -26,26 +27,16 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ReadWords {
 
 impl<'a> Commander<'a, ReadWordsResponse<'a>> for ReadWords {
     const ID: u32 = 0x0008;
+    const RESPONSE: bool = true;
+    const RESULT: bool = true;
 
-    fn send(
-        &self,
-        mut data: &'a mut [u8],
-        d: &hidapi::HidDevice,
-    ) -> Result<ReadWordsResponse<'a>, Error> {
-        let _ = self.try_into_ctx(&mut data, LE)?;
-
-        xmit(Self::ID, 0, &data, d)?;
-
-        let rsp = rx(data, d)?;
-
-        if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::CommandNotRecognized);
-        }
-
-        let res: ReadWordsResponse = rsp.data.pread_with::<ReadWordsResponse>(0, LE)?;
-
-        Ok(res)
-    }
+    // fn send(
+    //     &self,
+    //     mut data: &'a mut [u8],
+    //     d: &hidapi::HidDevice,
+    // ) -> Result<Option<ReadWordsResponse<'a>>, Error> {
+    //     send(*self, data, d)
+    // }
 }
 
 #[derive(Debug, PartialEq)]

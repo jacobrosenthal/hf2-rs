@@ -1,14 +1,15 @@
-use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
+use crate::command::{send, Commander, Error};
 use core::convert::TryInto;
-use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
+use scroll::{ctx, Pwrite};
 
 ///Compute checksum of a number of pages. The checksum algorithm used is CRC-16-CCITT.
+#[derive(Debug, Clone, Copy)]
 pub struct ChksumPages {
     pub target_address: u32,
     pub num_pages: u32,
 }
 
-impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ChksumPages {
+impl<'a> ctx::TryIntoCtx<::scroll::Endian> for ChksumPages {
     type Error = ::scroll::Error;
 
     fn try_into_ctx(
@@ -27,26 +28,16 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ChksumPages {
 
 impl<'a> Commander<'a, ChksumPagesResponse<'a>> for ChksumPages {
     const ID: u32 = 0x0007;
+    const RESPONSE: bool = true;
+    const RESULT: bool = true;
 
-    fn send(
-        &self,
-        mut data: &'a mut [u8],
-        d: &hidapi::HidDevice,
-    ) -> Result<ChksumPagesResponse<'a>, Error> {
-        let _ = self.try_into_ctx(&mut data, LE)?;
-
-        xmit(Self::ID, 0, &data, d)?;
-
-        let rsp = rx(data, d)?;
-
-        if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::CommandNotRecognized);
-        }
-
-        let res: ChksumPagesResponse = rsp.data.pread_with::<ChksumPagesResponse>(0, LE)?;
-
-        Ok(res)
-    }
+    // fn send(
+    //     &self,
+    //     mut data: &'a mut [u8],
+    //     d: &hidapi::HidDevice,
+    // ) -> Result<Option<ChksumPagesResponse<'a>>, Error> {
+    //     send(*self, data, d)
+    // }
 }
 
 /// Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
