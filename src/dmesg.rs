@@ -4,10 +4,10 @@ use scroll::{ctx, Pread, LE};
 ///Return internal log buffer if any. The result is a character array.
 pub struct Dmesg {}
 
-impl<'a> Commander<'a, DmesgResult> for Dmesg {
+impl<'a> Commander<'a, DmesgResponse> for Dmesg {
     const ID: u32 = 0x0010;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<DmesgResult, Error> {
+    fn send(&self, d: &hidapi::HidDevice) -> Result<DmesgResponse, Error> {
         let command = Command::new(Self::ID, 0, vec![]);
 
         xmit(command, d)?;
@@ -18,18 +18,18 @@ impl<'a> Commander<'a, DmesgResult> for Dmesg {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: DmesgResult = (rsp.data.as_slice()).pread_with::<DmesgResult>(0, LE)?;
+        let res: DmesgResponse = (rsp.data.as_slice()).pread_with::<DmesgResponse>(0, LE)?;
 
         Ok(res)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct DmesgResult {
+pub struct DmesgResponse {
     pub logs: String,
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for DmesgResult {
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for DmesgResponse {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
         let mut bytes = vec![0; this.len()];
@@ -39,6 +39,6 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for DmesgResult {
 
         let logs = core::str::from_utf8(&bytes)?;
 
-        Ok((DmesgResult { logs: logs.into() }, offset))
+        Ok((DmesgResponse { logs: logs.into() }, offset))
     }
 }

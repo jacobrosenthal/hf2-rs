@@ -17,13 +17,13 @@ pub trait Commander<'a, RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>> {
     fn send(&self, d: &hidapi::HidDevice) -> Result<RES, Error>;
 }
 
-pub struct NoResult {}
+pub struct NoResponse {}
 
 //todo, don't
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for NoResult {
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for NoResponse {
     type Error = Error;
     fn try_from_ctx(_this: &'a [u8], _le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        Ok((NoResult {}, 0))
+        Ok((NoResponse {}, 0))
     }
 }
 

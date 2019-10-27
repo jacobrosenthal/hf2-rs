@@ -77,13 +77,13 @@ fn reset_into_bootloader(d: &HidDevice) -> Result<(), Error> {
 }
 
 fn info(d: &HidDevice) -> Result<(), Error> {
-    let info: InfoResult = Info {}.send(&d)?;
+    let info: InfoResponse = Info {}.send(&d)?;
     println!("{:?}", info);
     Ok(())
 }
 
 fn bininfo(d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResult = BinInfo {}.send(&d)?;
+    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
     println!(
         "{:?} {:?}kb",
         bininfo,
@@ -94,13 +94,13 @@ fn bininfo(d: &HidDevice) -> Result<(), Error> {
 
 fn dmesg(d: &HidDevice) -> Result<(), Error> {
     // todo, test. not supported on my board
-    let dmesg: DmesgResult = Dmesg {}.send(&d)?;
+    let dmesg: DmesgResponse = Dmesg {}.send(&d)?;
     println!("{:?}", dmesg);
     Ok(())
 }
 
 fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResult = BinInfo {}.send(&d)?;
+    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
 
     if bininfo.mode != BinInfoMode::Bootloader {
         let _ = StartFlash {}.send(&d)?;
@@ -132,7 +132,7 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         } else {
             max_pages
         };
-        let chk: ChksumPagesResult = ChksumPages {
+        let chk: ChksumPagesResponse = ChksumPages {
             target_address,
             num_pages,
         }
@@ -161,7 +161,7 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
 }
 
 fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResult = BinInfo {}.send(&d)?;
+    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
 
     if bininfo.mode != BinInfoMode::Bootloader {
         let _ = StartFlash {}.send(&d)?;
@@ -193,7 +193,7 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         } else {
             max_pages
         };
-        let chk: ChksumPagesResult = ChksumPages {
+        let chk: ChksumPagesResponse = ChksumPages {
             target_address,
             num_pages,
         }

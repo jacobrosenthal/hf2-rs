@@ -1,4 +1,4 @@
-use crate::command::{rx, xmit, Command, Commander, Error, NoResult};
+use crate::command::{rx, xmit, Command, Commander, Error, NoResponse};
 use scroll::{ctx, ctx::TryIntoCtx, Pwrite, LE};
 
 ///Write a single page of flash memory. No Result.
@@ -27,10 +27,10 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a WriteFlashPage {
     }
 }
 
-impl<'a> Commander<'a, NoResult> for WriteFlashPage {
+impl<'a> Commander<'a, NoResponse> for WriteFlashPage {
     const ID: u32 = 0x0006;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
+    fn send(&self, d: &hidapi::HidDevice) -> Result<NoResponse, Error> {
         let mut data = vec![0_u8; self.data.len() + 4];
         let _ = self.try_into_ctx(&mut data, LE)?;
 
@@ -40,6 +40,6 @@ impl<'a> Commander<'a, NoResult> for WriteFlashPage {
 
         let _ = rx(d)?;
 
-        Ok(NoResult {})
+        Ok(NoResponse {})
     }
 }

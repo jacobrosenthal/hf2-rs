@@ -25,10 +25,10 @@ impl TryFrom<u32> for BinInfoMode {
 /// This command states the current mode of the device:
 pub struct BinInfo {}
 
-impl<'a> Commander<'a, BinInfoResult> for BinInfo {
+impl<'a> Commander<'a, BinInfoResponse> for BinInfo {
     const ID: u32 = 0x0001;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<BinInfoResult, Error> {
+    fn send(&self, d: &hidapi::HidDevice) -> Result<BinInfoResponse, Error> {
         let command = Command::new(Self::ID, 0, vec![]);
 
         xmit(command, d)?;
@@ -39,14 +39,14 @@ impl<'a> Commander<'a, BinInfoResult> for BinInfo {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: BinInfoResult = (rsp.data.as_slice()).pread_with::<BinInfoResult>(0, LE)?;
+        let res: BinInfoResponse = (rsp.data.as_slice()).pread_with::<BinInfoResponse>(0, LE)?;
 
         Ok(res)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct BinInfoResult {
+pub struct BinInfoResponse {
     pub mode: BinInfoMode, //    uint32_t mode;
     pub flash_page_size: u32,
     pub flash_num_pages: u32,
@@ -82,7 +82,7 @@ impl From<u32> for FamilyId {
     }
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResponse {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
         if this.len() < 20 {
@@ -102,7 +102,7 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResult {
         let family_id: FamilyId = this.gread_with::<u32>(&mut offset, le)?.into();
 
         Ok((
-            BinInfoResult {
+            BinInfoResponse {
                 mode,
                 flash_page_size,
                 flash_num_pages,

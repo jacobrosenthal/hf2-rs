@@ -1,4 +1,4 @@
-use crate::command::{rx, xmit, Command, Commander, Error, NoResult};
+use crate::command::{rx, xmit, Command, Commander, Error, NoResponse};
 use scroll::{ctx::TryIntoCtx, Pwrite, LE};
 
 ///Dual of READ WORDS, with the same constraints. No Result.
@@ -29,10 +29,10 @@ impl<'a> TryIntoCtx<::scroll::Endian> for &'a WriteWords {
     }
 }
 
-impl<'a> Commander<'a, NoResult> for WriteWords {
+impl<'a> Commander<'a, NoResponse> for WriteWords {
     const ID: u32 = 0x0009;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<NoResult, Error> {
+    fn send(&self, d: &hidapi::HidDevice) -> Result<NoResponse, Error> {
         let mut data = vec![0_u8; self.words.len() * 4 + 8];
         let _ = self.try_into_ctx(&mut data, LE)?;
 
@@ -42,6 +42,6 @@ impl<'a> Commander<'a, NoResult> for WriteWords {
 
         let _ = rx(d)?;
 
-        Ok(NoResult {})
+        Ok(NoResponse {})
     }
 }

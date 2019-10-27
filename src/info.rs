@@ -4,10 +4,10 @@ use scroll::{ctx, Pread, LE};
 /// Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
 pub struct Info {}
 
-impl<'a> Commander<'a, InfoResult> for Info {
+impl<'a> Commander<'a, InfoResponse> for Info {
     const ID: u32 = 0x0002;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<InfoResult, Error> {
+    fn send(&self, d: &hidapi::HidDevice) -> Result<InfoResponse, Error> {
         let command = Command::new(Self::ID, 0, vec![]);
 
         xmit(command, d)?;
@@ -18,18 +18,18 @@ impl<'a> Commander<'a, InfoResult> for Info {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: InfoResult = (rsp.data.as_slice()).pread_with::<InfoResult>(0, LE)?;
+        let res: InfoResponse = (rsp.data.as_slice()).pread_with::<InfoResponse>(0, LE)?;
 
         Ok(res)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct InfoResult {
+pub struct InfoResponse {
     pub info: String,
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResult {
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResponse {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
         let mut bytes = vec![0; this.len()];
@@ -39,7 +39,7 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResult {
 
         let info = core::str::from_utf8(&bytes)?;
 
-        Ok((InfoResult { info: info.into() }, offset))
+        Ok((InfoResponse { info: info.into() }, offset))
     }
 }
 
@@ -58,11 +58,11 @@ mod tests {
             0x61, 0x6D, 0x65, 0x72, 0x2D, 0x4D, 0x34, 0x0D, 0x0A,
         ];
 
-        let info_result = InfoResult {
+        let info_result = InfoResponse {
 info: "UF2 Bootloader v3.6.0 SFHWRO\r\nModel: PyGamer\r\nBoard-ID: SAMD51J19A-PyGamer-M4\r\n".into()
         };
 
-        let res: InfoResult = (data.as_slice()).pread_with::<InfoResult>(0, LE).unwrap();
+        let res: InfoResponse = (data.as_slice()).pread_with::<InfoResponse>(0, LE).unwrap();
 
         assert_eq!(res, info_result);
     }

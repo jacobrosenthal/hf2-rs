@@ -24,10 +24,10 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ReadWords {
     }
 }
 
-impl<'a> Commander<'a, ReadWordsResult> for ReadWords {
+impl<'a> Commander<'a, ReadWordsResponse> for ReadWords {
     const ID: u32 = 0x0008;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<ReadWordsResult, Error> {
+    fn send(&self, d: &hidapi::HidDevice) -> Result<ReadWordsResponse, Error> {
         let mut data = vec![0_u8; 8];
         let _ = self.try_into_ctx(&mut data, LE)?;
 
@@ -41,18 +41,19 @@ impl<'a> Commander<'a, ReadWordsResult> for ReadWords {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: ReadWordsResult = (rsp.data.as_slice()).pread_with::<ReadWordsResult>(0, LE)?;
+        let res: ReadWordsResponse =
+            (rsp.data.as_slice()).pread_with::<ReadWordsResponse>(0, LE)?;
 
         Ok(res)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ReadWordsResult {
+pub struct ReadWordsResponse {
     pub words: Vec<u32>,
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResult {
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResponse {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
         if this.len() < 4 {
@@ -64,6 +65,6 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ReadWordsResult {
         let mut offset = 0;
         this.gread_inout_with(&mut offset, &mut words, le)?;
 
-        Ok((ReadWordsResult { words }, offset))
+        Ok((ReadWordsResponse { words }, offset))
     }
 }

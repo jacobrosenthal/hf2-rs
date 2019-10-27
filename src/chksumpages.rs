@@ -24,10 +24,10 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ChksumPages {
     }
 }
 
-impl<'a> Commander<'a, ChksumPagesResult> for ChksumPages {
+impl<'a> Commander<'a, ChksumPagesResponse> for ChksumPages {
     const ID: u32 = 0x0007;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<ChksumPagesResult, Error> {
+    fn send(&self, d: &hidapi::HidDevice) -> Result<ChksumPagesResponse, Error> {
         let mut data = vec![0_u8; 8];
         let _ = self.try_into_ctx(&mut data, LE)?;
 
@@ -41,8 +41,8 @@ impl<'a> Commander<'a, ChksumPagesResult> for ChksumPages {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: ChksumPagesResult =
-            (rsp.data.as_slice()).pread_with::<ChksumPagesResult>(0, LE)?;
+        let res: ChksumPagesResponse =
+            (rsp.data.as_slice()).pread_with::<ChksumPagesResponse>(0, LE)?;
 
         Ok(res)
     }
@@ -50,11 +50,11 @@ impl<'a> Commander<'a, ChksumPagesResult> for ChksumPages {
 
 ///Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.
 #[derive(Debug, PartialEq)]
-pub struct ChksumPagesResult {
+pub struct ChksumPagesResponse {
     pub chksums: Vec<u16>,
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ChksumPagesResult {
+impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ChksumPagesResponse {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
         if this.len() < 2 {
@@ -66,6 +66,6 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ChksumPagesResult {
         let mut offset = 0;
         this.gread_inout_with(&mut offset, &mut chksums, le)?;
 
-        Ok((ChksumPagesResult { chksums }, offset))
+        Ok((ChksumPagesResponse { chksums }, offset))
     }
 }
