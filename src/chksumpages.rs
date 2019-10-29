@@ -1,6 +1,9 @@
+use crate::command::Response;
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
+use core::convert::From;
+use core::convert::TryFrom;
 use core::convert::TryInto;
-use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
+use scroll::{ctx, ctx::TryIntoCtx, Pwrite, LE};
 
 ///Compute checksum of a number of pages. The checksum algorithm used is CRC-16-CCITT.
 pub struct ChksumPages {
@@ -8,6 +11,7 @@ pub struct ChksumPages {
     pub num_pages: u32,
 }
 
+//todo, until to_bytes not nightly
 impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ChksumPages {
     type Error = ::scroll::Error;
 
@@ -25,17 +29,11 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ChksumPages {
     }
 }
 
-impl<'a> Commander<'a, ChksumPagesResponse<'a>> for ChksumPages {
-    const ID: u32 = 0x0007;
-
-    fn send(
-        &self,
-        mut data: &'a mut [u8],
-        d: &hidapi::HidDevice,
-    ) -> Result<ChksumPagesResponse<'a>, Error> {
+impl<'a> Commander<'a> for ChksumPages {
+    fn send(&self, mut data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<Response<'a>, Error> {
         let _ = self.try_into_ctx(&mut data, LE)?;
 
-        xmit(Self::ID, 0, &data, d)?;
+        xmit(0x0007, 0, &data, d)?;
 
         let rsp = rx(data, d)?;
 
@@ -43,9 +41,7 @@ impl<'a> Commander<'a, ChksumPagesResponse<'a>> for ChksumPages {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: ChksumPagesResponse = rsp.data.pread_with::<ChksumPagesResponse>(0, LE)?;
-
-        Ok(res)
+        Ok(Response::ChksumPages(ChksumPagesResponse::from(rsp.data)))
     }
 }
 
@@ -65,15 +61,24 @@ impl<'a> ChksumPagesResponse<'a> {
     }
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for ChksumPagesResponse<'a> {
-    type Error = Error;
-    fn try_from_ctx(this: &'a [u8], _le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        if this.len() < 2 {
-            return Err(Error::Parse);
-        }
+// impl<'a> TryFrom<&'a [u8]> for ChksumPagesResponse<'a> {
+//     type Error = Error;
 
-        let offset = 0;
+//     fn try_from(this: &'a [u8]) -> Result<ChksumPagesResponse<'a>, Self::Error> {
+//         if this.len() < 2 {
+//             return Err(Error::Parse);
+//         }
 
-        Ok((ChksumPagesResponse { chksums: this }, offset))
+//         Ok(ChksumPagesResponse { chksums: this })
+//     }
+// }
+
+impl<'a> core::convert::From<&'a [u8]> for ChksumPagesResponse<'a> {
+    fn from(this: &'a [u8]) -> ChksumPagesResponse<'a> {
+        // if this.len() < 2 {
+        //     return Err(Error::Parse);
+        // }
+
+        ChksumPagesResponse { chksums: this }
     }
 }

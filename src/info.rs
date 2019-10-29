@@ -1,14 +1,13 @@
+use crate::command::Response;
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
-use scroll::{ctx, Pread, LE};
+use std::convert::TryFrom;
 
 /// Various device information. See INFO_UF2.TXT in UF2 format for details.
 pub struct Info {}
 
-impl<'a> Commander<'a, InfoResponse<'a>> for Info {
-    const ID: u32 = 0x0002;
-
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<InfoResponse<'a>, Error> {
-        xmit(Self::ID, 0, &data, d)?;
+impl<'a> Commander<'a> for Info {
+    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<Response, Error> {
+        xmit(0x0002, 0, &data, d)?;
 
         let rsp = rx(data, d)?;
 
@@ -16,9 +15,7 @@ impl<'a> Commander<'a, InfoResponse<'a>> for Info {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: InfoResponse = rsp.data.pread_with::<InfoResponse>(0, LE)?;
-
-        Ok(res)
+        Ok(Response::Info(rsp.data.into()?))
     }
 }
 
@@ -27,15 +24,14 @@ pub struct InfoResponse<'a> {
     pub info: &'a str,
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResponse<'a> {
+impl<'a> TryFrom<&'a [u8]> for InfoResponse<'a> {
     type Error = Error;
-    fn try_from_ctx(this: &'a [u8], _le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        let offset = 0;
 
+    fn try_from(this: &'a [u8]) -> Result<InfoResponse<'a>, Self::Error> {
         //u8, no endianness
         let info = core::str::from_utf8(&this)?;
 
-        Ok((InfoResponse { info }, offset))
+        Ok(InfoResponse { info })
     }
 }
 
@@ -58,7 +54,7 @@ mod tests {
 info: "UF2 Bootloader v3.6.0 SFHWRO\r\nModel: PyGamer\r\nBoard-ID: SAMD51J19A-PyGamer-M4\r\n"
         };
 
-        let res: InfoResponse = (data.as_slice()).pread_with::<InfoResponse>(0, LE).unwrap();
+        let res = InfoResponse::try_from(data.as_slice()).unwrap();
 
         assert_eq!(res, info_result);
     }

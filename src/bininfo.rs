@@ -1,6 +1,6 @@
+use crate::command::Response;
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
-use core::convert::TryFrom;
-use scroll::{ctx, Pread, LE};
+use core::convert::{TryFrom, TryInto};
 
 #[derive(Debug, PartialEq)]
 pub enum BinInfoMode {
@@ -25,11 +25,9 @@ impl TryFrom<u32> for BinInfoMode {
 /// This command states the current mode of the device.
 pub struct BinInfo {}
 
-impl<'a> Commander<'a, BinInfoResponse> for BinInfo {
-    const ID: u32 = 0x0001;
-
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<BinInfoResponse, Error> {
-        xmit(Self::ID, 0, &data, d)?;
+impl<'a> Commander<'a> for BinInfo {
+    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<Response, Error> {
+        xmit(0x0001, 0, &data, d)?;
 
         let rsp = rx(data, d)?;
 
@@ -37,9 +35,7 @@ impl<'a> Commander<'a, BinInfoResponse> for BinInfo {
             return Err(Error::CommandNotRecognized);
         }
 
-        let res: BinInfoResponse = rsp.data.pread_with::<BinInfoResponse>(0, LE)?;
-
-        Ok(res)
+        Ok(Response::BinInfo(rsp.data.try_into()?))
     }
 }
 
@@ -80,34 +76,52 @@ impl From<u32> for FamilyId {
     }
 }
 
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResponse {
+impl<'a> core::convert::TryFrom<&'a [u8]> for BinInfoResponse {
     type Error = Error;
-    fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        if this.len() < 20 {
+
+    fn try_from(this: &'a [u8]) -> Result<BinInfoResponse, Self::Error> {
+        //todo, not sure if optional family_id means it would be 0, or would not be included at all
+        if this.len() < 24 {
             return Err(Error::Parse);
         }
 
-        //does it give me offset somehow??? or just slice appropriately for me?s
-        let mut offset = 0;
-        let mode: u32 = this.gread_with::<u32>(&mut offset, le)?;
-        let mode: Result<BinInfoMode, Error> = BinInfoMode::try_from(mode);
-        let mode: BinInfoMode = mode?;
-        let flash_page_size = this.gread_with::<u32>(&mut offset, le)?;
-        let flash_num_pages = this.gread_with::<u32>(&mut offset, le)?;
-        let max_message_size = this.gread_with::<u32>(&mut offset, le)?;
+        let mode = u32::from_le_bytes(this[0..4].try_into().unwrap());
+        let mode = BinInfoMode::try_from(mode)?;
+        let flash_page_size = u32::from_le_bytes(this[4..9].try_into().unwrap());;
+        let flash_num_pages = u32::from_le_bytes(this[9..14].try_into().unwrap());;
+        let max_message_size = u32::from_le_bytes(this[14..19].try_into().unwrap());
+        let family_id: FamilyId = u32::from_le_bytes(this[19..24].try_into().unwrap()).into();
 
-        //todo, not sure if optional means it would be 0, or would not be included at all
-        let family_id: FamilyId = this.gread_with::<u32>(&mut offset, le)?.into();
-
-        Ok((
-            BinInfoResponse {
-                mode,
-                flash_page_size,
-                flash_num_pages,
-                max_message_size,
-                family_id,
-            },
-            offset,
-        ))
+        Ok(BinInfoResponse {
+            mode,
+            flash_page_size,
+            flash_num_pages,
+            max_message_size,
+            family_id,
+        })
     }
 }
+
+// impl<'a> core::convert::From<&'a [u8]> for BinInfoResponse {
+//     fn from(this: &'a [u8]) -> Self {
+//         //todo, not sure if optional family_id means it would be 0, or would not be included at all
+//         // if this.len() < 24 {
+//         //     return Err(Error::Parse);
+//         // }
+
+//         let mode = u32::from_le_bytes(this[0..4].try_into().unwrap());
+//         let mode = BinInfoMode::try_from(mode).unwrap();
+//         let flash_page_size = u32::from_le_bytes(this[4..9].try_into().unwrap());;
+//         let flash_num_pages = u32::from_le_bytes(this[9..14].try_into().unwrap());;
+//         let max_message_size = u32::from_le_bytes(this[14..19].try_into().unwrap());
+//         let family_id: FamilyId = u32::from_le_bytes(this[19..24].try_into().unwrap()).into();
+
+//         BinInfoResponse {
+//             mode,
+//             flash_page_size,
+//             flash_num_pages,
+//             max_message_size,
+//             family_id,
+//         }
+//     }
+// }

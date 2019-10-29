@@ -1,22 +1,24 @@
+use crate::bininfo::BinInfoResponse;
+use crate::chksumpages::ChksumPagesResponse;
+use crate::dmesg::DmesgResponse;
+use crate::info::InfoResponse;
 use crate::mock::HidMockable;
-use core::convert::TryFrom;
+use crate::readwords::ReadWordsResponse;
+use core::convert::{TryFrom, TryInto};
 use log;
-use scroll::{ctx, Pread, Pwrite, LE};
+use scroll::{Pwrite, LE};
 
-pub trait Commander<'a, RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>> {
-    const ID: u32;
-
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<RES, Error>;
+pub enum Response<'a> {
+    BinInfo(BinInfoResponse),
+    Info(InfoResponse<'a>),
+    Dmesg(DmesgResponse<'a>),
+    ReadWords(ReadWordsResponse<'a>),
+    ChksumPages(ChksumPagesResponse<'a>),
+    NoResponse,
 }
 
-pub struct NoResponse {}
-
-//todo, don't
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for NoResponse {
-    type Error = Error;
-    fn try_from_ctx(_this: &'a [u8], _le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        Ok((NoResponse {}, 0))
-    }
+pub trait Commander<'a> {
+    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<Response, Error>;
 }
 
 #[derive(Debug, PartialEq)]
@@ -84,22 +86,21 @@ impl TryFrom<u8> for PacketType {
 impl<'a> TryFrom<&'a [u8]> for CommandResponse<'a> {
     type Error = Error;
 
-    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
-        if value.len() < 4 {
+    fn try_from(this: &'a [u8]) -> Result<Self, Self::Error> {
+        if this.len() < 4 {
             return Err(Error::Parse);
         }
 
-        let mut offset = 0;
-        let tag = value.gread_with::<u16>(&mut offset, scroll::LE)?;
-        let status: u8 = value.gread_with::<u8>(&mut offset, scroll::LE)?;
-        let status = CommandResponseStatus::try_from(status)?;
-        let status_info = value.gread_with::<u8>(&mut offset, scroll::LE)?;
+        let tag = u16::from_le_bytes(this[0..2].try_into().unwrap());;
+        let status = CommandResponseStatus::try_from(this[2])?;
+        let status_info = this[3];
+        let data = if this.len() >= 4 { &this[4..] } else { &[] };
 
         Ok(CommandResponse {
             tag,
             status,
             status_info,
-            data: &value[offset..],
+            data,
         })
     }
 }
@@ -241,6 +242,12 @@ impl From<scroll::Error> for Error {
 
 impl From<core::str::Utf8Error> for Error {
     fn from(_err: core::str::Utf8Error) -> Self {
+        Error::Parse
+    }
+}
+
+impl From<core::convert::Infallible> for Error {
+    fn from(_err: core::convert::Infallible) -> Self {
         Error::Parse
     }
 }
