@@ -1,5 +1,5 @@
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
-
+use crate::mock::HidMockable;
 use core::convert::TryInto;
 use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
 
@@ -29,10 +29,10 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a ReadWords {
 impl<'a> Commander<'a, ReadWordsResponse<'a>> for ReadWords {
     const ID: u32 = 0x0008;
 
-    fn send(
+    fn send<T: HidMockable>(
         &self,
         mut data: &'a mut [u8],
-        d: &hidapi::HidDevice,
+        d: &T,
     ) -> Result<ReadWordsResponse<'a>, Error> {
         let offset = self.try_into_ctx(&mut data, LE)?;
 

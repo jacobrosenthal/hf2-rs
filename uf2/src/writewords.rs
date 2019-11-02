@@ -1,4 +1,5 @@
 use crate::command::{rx, xmit, Commander, Error, NoResponse};
+use crate::mock::HidMockable;
 use scroll::{ctx::TryIntoCtx, Pwrite, LE};
 
 /// Dual of READ WORDS, with the same constraints.
@@ -33,7 +34,7 @@ impl<'a> TryIntoCtx<::scroll::Endian> for &'a WriteWords<'a> {
 impl<'a> Commander<'a, NoResponse> for WriteWords<'a> {
     const ID: u32 = 0x0009;
 
-    fn send(&self, mut data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<NoResponse, Error> {
+    fn send<T: HidMockable>(&self, mut data: &'a mut [u8], d: &T) -> Result<NoResponse, Error> {
         debug_assert!(data.len() >= self.words.len() * 4 + 8);
 
         let offset = self.try_into_ctx(&mut data, LE)?;

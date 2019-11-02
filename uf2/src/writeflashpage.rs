@@ -1,4 +1,5 @@
 use crate::command::{rx, xmit, Commander, Error, NoResponse};
+use crate::mock::HidMockable;
 use scroll::{ctx, ctx::TryIntoCtx, Pwrite, LE};
 
 /// Write a single page of flash memory.
@@ -31,7 +32,7 @@ impl<'a> ctx::TryIntoCtx<::scroll::Endian> for &'a WriteFlashPage<'a> {
 impl<'a> Commander<'a, NoResponse> for WriteFlashPage<'a> {
     const ID: u32 = 0x0006;
 
-    fn send(&self, mut data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<NoResponse, Error> {
+    fn send<T: HidMockable>(&self, mut data: &'a mut [u8], d: &T) -> Result<NoResponse, Error> {
         debug_assert!(data.len() >= self.data.len() + 4);
 
         let offset = self.try_into_ctx(&mut data, LE)?;

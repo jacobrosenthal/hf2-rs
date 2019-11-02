@@ -1,8 +1,9 @@
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
+use crate::mock::HidMockable;
 use core::convert::TryFrom;
 use scroll::{ctx, Pread, LE};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum BinInfoMode {
     //bootloader, and thus flashing of user-space programs is allowed
     Bootloader = 0x0001,
@@ -28,7 +29,7 @@ pub struct BinInfo {}
 impl<'a> Commander<'a, BinInfoResponse> for BinInfo {
     const ID: u32 = 0x0001;
 
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<BinInfoResponse, Error> {
+    fn send<T: HidMockable>(&self, data: &'a mut [u8], d: &T) -> Result<BinInfoResponse, Error> {
         xmit(Self::ID, 0, &[], d)?;
 
         let rsp = rx(data, d)?;
@@ -43,7 +44,7 @@ impl<'a> Commander<'a, BinInfoResponse> for BinInfo {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct BinInfoResponse {
     pub mode: BinInfoMode, //    uint32_t mode;
     pub flash_page_size: u32,

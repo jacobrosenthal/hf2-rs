@@ -2,17 +2,39 @@
 Implements [Microsofts HID Flashing Format (HF2)](https://github.com/microsoft/uf2/blob/86e101e3a282553756161fe12206c7a609975e70/hf2.md) as both a library and binary.
 
 ## install and setup
+Has built in support for usb using rusts [hidapi library](https://crates.io/crates/hidapi) and thus follows its requirements, or provides a HidMockable trait to bring your own.
 
-On macOS, it doesnt seem to require any other packages. Note this protocol works over USB HID, which is an input standard, and as of Catalina you will get a permissions prompt and must follow directions to allow "Input Monitoring" for the Terminal application.
+On macOS, hidapi doesnt seem to require any other packages. Note this protocol works over USB HID, which is an input standard, and as of Catalina you will get a permissions prompt and must follow directions to allow "Input Monitoring" for the Terminal application.
 
 On linux if building libusb fails you can also try setting up the native `libusb` library where it can be found by `pkg-config` or `vcpkg`.
 
-## used as a library
-no_std compatible, so requires a scratch buffer
+## std usage
+Provides trait for hidapi usage
+```
+use hidapi::HidApi;
+use std::fs::File;
+use std::io::Read;
+use uf2::*;
+
+fn main() -> Result<(), uf2::Error> {
+    let api = HidApi::new().unwrap();
+    let d = api.open(0x239A, 0x003D).unwrap();
+
+    let mut f = File::open("./neopixel_rainbow.bin").unwrap();
+    let mut binary = vec![];
+    f.read_to_end(&mut binary).unwrap();
+
+    flash(&binary, 0x4000, &d)?;
+    Ok(())
+}
+```
+
+## no_std
+can be used on no_std without alloc with default-features disabled, but requires an implementation of the hid trait to write to, in the standard rust case hidapi, and a scratch buffer from somewhere, for brevity in this case, from a std vec. See the allocated helper functions but it looks something like:
 ```
 let mut scratch = vec![0_u8; 64];
 
-let bininfo: BinInfoResponse = BinInfo {}.send(&mut scratch, &d)?;
+let bininfo = BinInfo {}.send(&mut scratch, &d)?;
 println!("{:?}", bininfo);
 ```
 The two reset commands, which have don't actually send or even attempt to receive data, can actually use a zero size scratch buffer.
@@ -22,7 +44,7 @@ let _ = ResetIntoApp {}.send(&mut [], &d)?;
 Checksums are available as an iterator
 ```
 let mut scratch = vec![0_u8; 1024];
-let checksums: ChksumPagesResponse = ChksumPages {
+let checksums = ChksumPages {
     target_address,
     num_pages,
 }

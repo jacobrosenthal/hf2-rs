@@ -3,10 +3,10 @@ use core::convert::TryFrom;
 use log;
 use scroll::{ctx, Pread, Pwrite, LE};
 
-pub trait Commander<'a, RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>> {
+pub(crate) trait Commander<'a, RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>> {
     const ID: u32;
 
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<RES, Error>;
+    fn send<T: HidMockable>(&self, data: &'a mut [u8], d: &T) -> Result<RES, Error>;
 }
 
 pub struct NoResponse {}
@@ -227,6 +227,7 @@ pub enum Error {
     Transmission,
 }
 
+#[cfg(feature = "alloc")]
 impl From<hidapi::HidError> for Error {
     fn from(_err: hidapi::HidError) -> Self {
         Error::Transmission
@@ -249,6 +250,9 @@ impl From<core::str::Utf8Error> for Error {
 mod tests {
     use super::*;
     use crate::mock::MyMock;
+
+    extern crate alloc;
+    use alloc::{vec, vec::Vec};
 
     #[test]
     fn send_fragmented() {

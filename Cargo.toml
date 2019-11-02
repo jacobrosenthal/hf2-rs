@@ -1,5 +1,5 @@
 [package]
-name = "uf2"
+name = "uf2-cli"
 version = "0.1.0"
 authors = ["Jacob Rosenthal <@jacobrosenthal>"]
 edition = "2018"
@@ -8,21 +8,17 @@ repository = "https://github.com/jacobrosenthal/uf2-rs"
 keywords = ["hid", "pygamer", "flash"]
 
 
-[lib]
-name = "uf2"
-path = "src/lib.rs"
-
-[[bin]]
-name = "uf2"
-path = "src/bin.rs"
-
 [patch.crates-io]
 # 1.9 got yanked, still waiting on new_custom
 crc = {git="https://github.com/mrhooray/crc-rs.git", rev="878fcc85b9b04fb4af8c3fb3bc9b7e9d9686cecc"}
 
+[workspace]
+
+
 [dependencies]
+uf2 = { path = "uf2" }
 structopt = { version = "0.3"}
-hidapi = "0.5.2"
+hidapi = "1.0.1"
 scroll = { version = "0.10.1", default-features=false,features = ["derive"] }
 crc = "2.0.0"
 log = "0.4.6"

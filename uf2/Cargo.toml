@@ -1,0 +1,16 @@
+[package]
+name = "uf2"
+version = "0.1.0"
+authors = ["Jacob <jacobrosenthal@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+hidapi = {version="1.0.1", optional = true}
+scroll = { version = "0.10.1", default-features=false,features = ["derive"] }
+crc = "2.0.0"
+log = "0.4.6"
+
+[features]
+default = ["hidapi", "alloc"]
+alloc = []
+

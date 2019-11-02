@@ -1,4 +1,5 @@
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
+use crate::mock::HidMockable;
 use scroll::{ctx, Pread, LE};
 
 /// Return internal log buffer if any.
@@ -7,7 +8,7 @@ pub struct Dmesg {}
 impl<'a> Commander<'a, DmesgResponse<'a>> for Dmesg {
     const ID: u32 = 0x0010;
 
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<DmesgResponse<'a>, Error> {
+    fn send<T: HidMockable>(&self, data: &'a mut [u8], d: &T) -> Result<DmesgResponse<'a>, Error> {
         xmit(Self::ID, 0, &[], d)?;
 
         let rsp = rx(data, d)?;

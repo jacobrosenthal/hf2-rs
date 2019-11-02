@@ -1,4 +1,5 @@
 use crate::command::{rx, xmit, CommandResponseStatus, Commander, Error};
+use crate::mock::HidMockable;
 use scroll::{ctx, Pread, LE};
 
 /// Various device information. See INFO_UF2.TXT in UF2 format for details.
@@ -7,7 +8,7 @@ pub struct Info {}
 impl<'a> Commander<'a, InfoResponse<'a>> for Info {
     const ID: u32 = 0x0002;
 
-    fn send(&self, data: &'a mut [u8], d: &hidapi::HidDevice) -> Result<InfoResponse<'a>, Error> {
+    fn send<T: HidMockable>(&self, data: &'a mut [u8], d: &T) -> Result<InfoResponse<'a>, Error> {
         xmit(Self::ID, 0, &[], d)?;
 
         let rsp = rx(data, d)?;
@@ -42,6 +43,8 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for InfoResponse<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    extern crate alloc;
+    use alloc::{vec, vec::Vec};
 
     #[test]
     fn parse_response() {
