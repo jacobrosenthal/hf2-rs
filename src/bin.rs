@@ -101,6 +101,7 @@ fn dmesg(d: &HidDevice) -> Result<(), Error> {
 
 fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
     let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+    log::debug!("{:?}", bininfo);
 
     if bininfo.mode != BinInfoMode::Bootloader {
         let _ = StartFlash {}.send(&d)?;
@@ -114,6 +115,12 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
     //pad zeros to page size
     let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;
     let padded_size = padded_num_pages * bininfo.flash_page_size;
+    log::debug!(
+        "binary is {} bytes, padding to {} bytes",
+        binary.len(),
+        padded_size
+    );
+
     for _i in 0..(padded_size as usize - binary.len()) {
         binary.push(0x0);
     }
@@ -139,6 +146,7 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         .send(&d)?;
         device_checksums.extend_from_slice(&chk.chksums[..]);
     }
+    log::debug!("checksums received {:04X?}", device_checksums);
 
     // only write changed contents
     for (page_index, page) in binary.chunks(bininfo.flash_page_size as usize).enumerate() {
@@ -146,12 +154,21 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         digest1.write(&page);
 
         if digest1.sum16() != device_checksums[page_index] {
+            log::debug!(
+                "ours {:04X?} != {:04X?} theirs, updating page {}",
+                digest1.sum16(),
+                device_checksums[page_index],
+                page_index,
+            );
+
             let target_address = address + bininfo.flash_page_size * page_index as u32;
             let _ = WriteFlashPage {
                 target_address,
                 data: page.to_vec(),
             }
             .send(&d)?;
+        } else {
+            log::debug!("not updating page {}", page_index,);
         }
     }
 
