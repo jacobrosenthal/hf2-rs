@@ -7,10 +7,12 @@ On macOS, it doesnt seem to require any other packages. Note this protocol works
 
 On linux if building libusb fails you can also try setting up the native `libusb` library where it can be found by `pkg-config` or `vcpkg`.
 
+Git clone and cd to the directory and then either cargo run, or install it with `cargo install --path=.  --features="binaries"`
+
 ## used as a library
 
 ```
-let chk: ChksumPagesResult = ChksumPages {
+let chk: ChksumPagesResponse = ChksumPages {
     0x4000,
     1,
 }.send(&d)?;
@@ -47,9 +49,9 @@ SUBCOMMANDS:
 It will attempt to autodetect a device by sending the bininfo command any hid devices it finds and using the first one that responds. I don't think that should be destructive, but you can also specify pid and vid (before the command for some reason..) instead.
 
 ```
-cargo run -- -v 0x0239 -p 0x003D flash -f neopixel_rainbow.bin -a 0x4000
+cargo run --features="binaries" -- -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
 ```
 If you find an error, be sure to run with debug to see where in the process it failed
 ```
-RUST_LOG=debug cargo run -- -v 0x0239 -p 0x003D flash -f neopixel_rainbow.bin -a 0x4000
+RUST_LOG=debug cargo run --features="binaries" -- -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
 ```
