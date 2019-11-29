@@ -1,4 +1,4 @@
-use crc::{self, crc16, Hasher16};
+use crc_any::CRCu16;
 use hidapi::{HidApi, HidDevice};
 use maplit::hashmap;
 use std::fs::File;
@@ -150,13 +150,14 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
 
     // only write changed contents
     for (page_index, page) in binary.chunks(bininfo.flash_page_size as usize).enumerate() {
-        let mut digest1 = crc16::Digest::new_custom(crc16::X25, 0u16, 0u16, crc::CalcType::Normal);
-        digest1.write(&page);
+        let mut xmodem = CRCu16::crc16xmodem();
 
-        if digest1.sum16() != device_checksums[page_index] {
+        xmodem.digest(&page);
+
+        if xmodem.get_crc() != device_checksums[page_index] {
             log::debug!(
                 "ours {:04X?} != {:04X?} theirs, updating page {}",
-                digest1.sum16(),
+                xmodem.get_crc(),
                 device_checksums[page_index],
                 page_index,
             );
@@ -222,10 +223,10 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
 
     //collect and sums so we can view all mismatches, not just first
     for page in binary.chunks(bininfo.flash_page_size as usize) {
-        let mut digest1 = crc16::Digest::new_custom(crc16::X25, 0u16, 0u16, crc::CalcType::Normal);
-        digest1.write(&page);
+        let mut xmodem = CRCu16::crc16xmodem();
+        xmodem.digest(&page);
 
-        binary_checksums.push(digest1.sum16());
+        binary_checksums.push(xmodem.get_crc());
     }
 
     //only check as many as our binary has

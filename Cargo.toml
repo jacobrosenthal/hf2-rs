@@ -15,16 +15,17 @@ path = "src/lib.rs"
 [[bin]]
 name = "uf2"
 path = "src/bin.rs"
+required-features = ["binaries"]
 
-[patch.crates-io]
-# 1.9 got yanked, still waiting on new_custom
-crc = {git="https://github.com/mrhooray/crc-rs.git", rev="878fcc85b9b04fb4af8c3fb3bc9b7e9d9686cecc"}
+
+[features]
+binaries = ["pretty_env_logger", "maplit", "crc-any", "structopt"]
 
 [dependencies]
-structopt = { version = "0.3"}
 hidapi = "0.5.2"
 scroll = { version = "0.10.0", features = ["derive"] }
-crc = "2.0.0"
 log = "0.4.6"
-pretty_env_logger = "0.3.0"
-maplit = "1.0.2"
+pretty_env_logger = { version = "0.3.0", optional = true }
+maplit = { version = "1.0.2", optional = true }
+crc-any = {version = "2.2.3", default-features = false, optional = true }
+structopt = { version = "0.3", optional = true}
