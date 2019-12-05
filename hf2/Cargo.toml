@@ -9,6 +9,6 @@ keywords = ["uf2", "microsoft", "makecode", "adafruit", "hid", "pygamer", "flash
 
 
 [dependencies]
-hidapi = "0.5.2"
+hidapi = "1.1.0"
 scroll = { version = "0.10.0", features = ["derive"] }
 log = "0.4.6"

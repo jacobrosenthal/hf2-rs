@@ -11,7 +11,7 @@ keywords = ["uf2", "microsoft", "makecode", "adafruit", "hid", "pygamer", "flash
 [dependencies]
 structopt = "0.3.2"
 hf2 = { version = "0.1.0", path="../hf2" }
-hidapi = "0.5.2"
+hidapi = "1.1.0"
 pretty_env_logger = "0.3.0"
 maplit = "1.0.2"
 crc-any = {version = "2.2.3", default-features = false }
