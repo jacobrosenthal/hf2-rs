@@ -1,7 +1,7 @@
 [package]
 name = "hf2-cli"
 version = "0.1.0"
-authors = ["Jacob <jacobrosenthal@gmail.com>"]
+authors = ["Jacob Rosenthal <@jacobrosenthal>"]
 edition = "2018"
 description = "CLI for Microsoft HID Flashing Library for UF2 Bootloaders"
 repository = "https://github.com/jacobrosenthal/hf2-rs"
