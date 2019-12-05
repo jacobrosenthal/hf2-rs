@@ -1,31 +1,6 @@
-[package]
-name = "uf2"
-version = "0.1.0"
-authors = ["Jacob Rosenthal <@jacobrosenthal>"]
-edition = "2018"
-description = "Microsoft HID Flashing Format"
-repository = "https://github.com/jacobrosenthal/uf2-rs"
-keywords = ["hid", "pygamer", "flash"]
-
-
-[lib]
-name = "uf2"
-path = "src/lib.rs"
-
-[[bin]]
-name = "uf2"
-path = "src/bin.rs"
-required-features = ["binaries"]
-
-
-[features]
-binaries = ["pretty_env_logger", "maplit", "crc-any", "structopt"]
-
-[dependencies]
-hidapi = "0.5.2"
-scroll = { version = "0.10.0", features = ["derive"] }
-log = "0.4.6"
-pretty_env_logger = { version = "0.3.0", optional = true }
-maplit = { version = "1.0.2", optional = true }
-crc-any = {version = "2.2.3", default-features = false, optional = true }
-structopt = { version = "0.3", optional = true}
+[workspace]
+members = [
+    "cargo-hf2",
+    "hf2-cli",
+    "hf2",
+]

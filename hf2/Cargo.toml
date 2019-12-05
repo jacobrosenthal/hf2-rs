@@ -1,0 +1,14 @@
+[package]
+name = "hf2"
+version = "0.1.0"
+authors = ["Jacob Rosenthal <@jacobrosenthal>"]
+edition = "2018"
+description = "Microsoft HID Flashing Library for UF2 Bootloaders"
+repository = "https://github.com/jacobrosenthal/hf2-rs"
+keywords = ["uf2", "microsoft", "makecode", "adafruit", "hid", "pygamer", "flash"]
+
+
+[dependencies]
+hidapi = "0.5.2"
+scroll = { version = "0.10.0", features = ["derive"] }
+log = "0.4.6"

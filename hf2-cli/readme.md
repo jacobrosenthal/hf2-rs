@@ -1,31 +1,18 @@
-# uf2-hid
-Implements [Microsofts HID Flashing Format (HF2)](https://github.com/microsoft/uf2/blob/86e101e3a282553756161fe12206c7a609975e70/hf2.md) as both a library and binary.
+# hf2-cli
+Replaces the cargo build command to include flashing over usb to connectd uf2 devices using [hf2 flashing over hid protocol](https://github.com/jacobrosenthal/hf2-rs).
 
-## install and setup
-
-On macOS, it doesnt seem to require any other packages. Note this protocol works over USB HID, which is an input standard, and as of Catalina you will get a permissions prompt and must follow directions to allow "Input Monitoring" for the Terminal application.
+## install
+`cargo install hf2-cli`
 
 On linux if building libusb fails you can also try setting up the native `libusb` library where it can be found by `pkg-config` or `vcpkg`.
 
-Git clone and cd to the directory and then either cargo run, or install it with `cargo install --path=.  --features="binaries"`
-
-## used as a library
-
+## use
 ```
-let chk: ChksumPagesResponse = ChksumPages {
-    0x4000,
-    1,
-}.send(&d)?;
-
-```
-
-## used via cli
-```
-uf2 0.1.0
+hf2 0.1.0
 Microsoft HID Flashing Format
 
 USAGE:
-    uf2 [OPTIONS] <SUBCOMMAND>
+    hf2 [OPTIONS] <SUBCOMMAND>
 
 FLAGS:
     -h, --help       Prints help information
@@ -49,9 +36,9 @@ SUBCOMMANDS:
 It will attempt to autodetect a device by sending the bininfo command any hid devices it finds and using the first one that responds. I don't think that should be destructive, but you can also specify pid and vid (before the command for some reason..) instead.
 
 ```
-cargo run --features="binaries" -- -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
+hf2 -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
 ```
 If you find an error, be sure to run with debug to see where in the process it failed
 ```
-RUST_LOG=debug cargo run --features="binaries" -- -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
+RUST_LOG=debug hf2 -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
 ```
