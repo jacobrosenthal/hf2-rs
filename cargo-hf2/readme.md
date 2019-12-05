@@ -1,10 +1,14 @@
 # cargo-hf2
-Replaces the cargo build command to include flashing over usb to connectd uf2 devices using [hf2 flashing over hid protocol](https://github.com/jacobrosenthal/hf2-rs).
+Replaces the cargo build command to include flashing over usb to connected uf2 devices using  [hf2 flashing over hid protocol](https://github.com/jacobrosenthal/hf2-rs/tree/hf2).
 
 ## install
 `cargo install cargo-hf2`
 
-On macOS, it doesnt seem to require any other packages. Note this protocol works over USB HID, which is an input standard, and as of Catalina you will get a permissions prompt and must follow directions to allow "Input Monitoring" for the Terminal application.
+Utilizes the [hidapi](https://crates.io/crates/hidapi) crate which doesnt appear to need any dependencies.
+
+On linux if building libusb fails you can also try setting up the native `libusb` library where it can be found by `pkg-config` or `vcpkg`.
+
+On mac, as of Catalina you will get a permissions prompt and must follow directions to allow "Input Monitoring" for the Terminal application. 
 
 ## use
 From a firmware directory you can run all the usual cargo build commands, --example and --release, with build replaced by hf2. Assuming the builds succeeds we open the usb device using a hardcoded whitelist and copy the file over.
@@ -39,4 +43,16 @@ thread 'main' panicked at 'Are you sure device is plugged in and in bootloader m
 
 ```
 
-If you find an error, be sure to run with debug to see where in the process it failed `RUST_LOG=debug cargo hf2 --release --example ferris_img`
+## troubleshooting
+
+If it cant find a device, make sure your device is in a bootloader mode ready to receive firmware.
+```
+thread 'main' panicked at 'Are you sure device is plugged in and in bootloader mode?: OpenHidDeviceError', src/libcore/result.rs:1165:5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace.
+```
+On the PyGamer, 2 button presses enables a blue and green screen that says PyGamer and also generally creates a flash drive which you should be able to see (though this doesn't use that method).
+
+If you find another error, be sure to run with debug to see where in the process it failed and include those logs when reporting
+```
+RUST_LOG=debug hf2 -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
+```
