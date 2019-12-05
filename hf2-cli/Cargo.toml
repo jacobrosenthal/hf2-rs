@@ -5,8 +5,8 @@ authors = ["Jacob <jacobrosenthal@gmail.com>"]
 edition = "2018"
 description = "CLI for Microsoft HID Flashing Library for UF2 Bootloaders"
 repository = "https://github.com/jacobrosenthal/hf2-rs"
-keywords = ["uf2", "microsoft", "makecode", "adafruit", "hid", "pygamer", "flash"]
-categories = ["command-line-utilities", "development-tools", "embedded-development"]
+keywords = ["uf2", "makecode", "adafruit", "hid", "flash"]
+categories = ["command-line-utilities", "development-tools", "embedded"]
 license = "MIT/Apache-2.0"
 readme = "readme.md"
 
