@@ -1,5 +1,5 @@
 # cargo-hf2
-Replaces the cargo build command to include flashing over usb to connected uf2 devices using  [hf2 flashing over hid protocol](https://github.com/jacobrosenthal/hf2-rs/tree/hf2).
+Replaces the cargo build command to include flashing over usb to connected uf2 devices using  [hf2 flashing over hid protocol](https://github.com/jacobrosenthal/hf2-rs/tree/master/hf2).
 
 ## install
 `cargo install cargo-hf2`

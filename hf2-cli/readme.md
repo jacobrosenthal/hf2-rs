@@ -1,5 +1,5 @@
 # hf2-cli
-Command line implementation of the [hf2 flashing over hid protocol](https://github.com/jacobrosenthal/hf2-rs/tree/hf2) commonly used in by [Microsoft MakeCode](https://www.microsoft.com/en-us/makecode) and [Adafruit](https://www.microsoft.com/en-us/makecode) hardware.
+Command line implementation of the [hf2 flashing over hid protocol](https://github.com/jacobrosenthal/hf2-rs/tree/master/hf2) commonly used in by [Microsoft MakeCode](https://www.microsoft.com/en-us/makecode) and [Adafruit](https://www.adafruit.com) hardware.
 
 ## install
 `cargo install hf2-cli`
