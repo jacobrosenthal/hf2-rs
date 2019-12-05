@@ -1,0 +1,26 @@
+[package]
+name = "cargo-hf2"
+version = "0.1.0"
+authors = ["Jacob <jacobrosenthal@gmail.com>"]
+edition = "2018"
+description = "Cargo Subcommand for Microsoft HID Flashing Library for UF2 Bootloaders"
+repository = "https://github.com/jacobrosenthal/hf2-rs"
+keywords = ["uf2", "microsoft", "makecode", "adafruit", "hid", "flash", "cargo", "subcommand"]
+categories = ["command-line-utilities", "development-tools", "embedded-development"]
+license = "MIT/Apache-2.0"
+readme = "readme.md"
+
+
+[dependencies]
+structopt = "0.3.2"
+colored = "1.8.0"
+hf2 = { version = "0.1.0", path="../hf2" }
+hidapi = "1.1.0"
+goblin = "0.0.24"
+hexdump = "0.1.0"
+cargo-project = "0.2.2"
+pretty_env_logger = "0.3.0"
+maplit = "1.0.2"
+crc-any = {version = "2.2.3", default-features = false }
+log = "0.4.6"
+

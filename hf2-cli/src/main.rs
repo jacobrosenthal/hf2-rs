@@ -1,11 +1,11 @@
 use crc_any::CRCu16;
+use hf2::*;
 use hidapi::{HidApi, HidDevice};
 use maplit::hashmap;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use structopt::StructOpt;
-use uf2::*;
 
 fn main() -> Result<(), Error> {
     pretty_env_logger::init();
@@ -16,7 +16,7 @@ fn main() -> Result<(), Error> {
 
     let d = if let (Some(v), Some(p)) = (args.vid, args.pid) {
         api.open(v, p)
-            .expect("Are you sure device is plugged in and in uf2 mode?")
+            .expect("Are you sure device is plugged in and in bootloader mode?")
     } else {
         println!("no vid/pid provided..");
 
@@ -44,7 +44,7 @@ fn main() -> Result<(), Error> {
                 }
             }
         }
-        device.expect("Are you sure device is plugged in and in uf2 mode?")
+        device.expect("Are you sure device is plugged in and in bootloader mode?")
     };
 
     println!(
@@ -289,7 +289,7 @@ pub enum Cmd {
 }
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "uf2", about = "Microsoft HID Flashing Format")]
+#[structopt(name = "hf2", about = "Microsoft HID Flashing Format")]
 struct Opt {
     #[structopt(subcommand)]
     cmd: Cmd,
