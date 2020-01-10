@@ -15,6 +15,7 @@ use std::{
 };
 use structopt::StructOpt;
 
+
 fn main() {
     // Initialize the logging backend.
     pretty_env_logger::init();
@@ -75,14 +76,24 @@ fn main() {
         .wait()
         .unwrap();
 
+    
+    
     if !status.success() {
-        use std::os::unix::process::ExitStatusExt;
+        #[cfg(target_os = "linux")]
+        use std::os::unix::process::ExitStatus;
+        #[cfg(target_os = "linux")]
         let status = status
             .code()
             .or_else(|| if cfg!(unix) { status.signal() } else { None })
             .unwrap_or(1);
+            #[cfg(target_os = "windows")]
+            let status = status
+            .code()
+            .or_else(|| if cfg!(unix) { std::process::abort() } else { None })
+            .unwrap_or(1);
         std::process::exit(status);
     }
+
 
     let api = HidApi::new().expect("Couldn't find system usb");
 
