@@ -26,6 +26,7 @@ fn main() {
 
     // Try and get the cargo project information.
     let project = cargo_project::Project::query(".").unwrap();
+    // TODO check why default build target isn't set correctly on Windows
 
     // Decide what artifact to use.
     let artifact = if let Some(bin) = &opt.bin {
@@ -43,13 +44,25 @@ fn main() {
         cargo_project::Profile::Dev
     };
 
+
     // Try and get the artifact path.
+    #[cfg(target_os = "linux")]
     let path = project
         .path(
             artifact,
             profile,
             opt.target.as_ref().map(|t| &**t),
             "x86_64-unknown-linux-gnu",
+        )
+        .unwrap();
+    
+    #[cfg(target_os = "windows")]
+    let path = project
+        .path(
+            artifact,
+            profile,
+            opt.target.as_ref().map(|t| &**t),
+            "x86_64-pc-windows-msvc",
         )
         .unwrap();
 
@@ -86,10 +99,10 @@ fn main() {
             .code()
             .or_else(|| if cfg!(unix) { status.signal() } else { None })
             .unwrap_or(1);
-            #[cfg(target_os = "windows")]
-            let status = status
+        #[cfg(target_os = "windows")]
+        let status = status
             .code()
-            .or_else(|| if cfg!(unix) { std::process::abort() } else { None })
+            .or_else(|| if cfg!(winapi) { std::process::abort() } else { None })
             .unwrap_or(1);
         std::process::exit(status);
     }
