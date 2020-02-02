@@ -4,9 +4,26 @@ Command line implementation of the [hf2 flashing over hid protocol](https://gith
 ## install
 `cargo install hf2-cli`
 
-Utilizes the [hidapi](https://crates.io/crates/hidapi) crate which doesnt appear to need any dependencies.
+Utilizes the [hidapi-sys crate](https://crates.io/crates/hidapi) which may require libusb or other dependencies, see [hidapi](https://github.com/libusb/hidapi#linux) for further directions.
 
-On linux if building libusb fails you can also try setting up the native `libusb` library where it can be found by `pkg-config` or `vcpkg`.
+### linux
+If you'd like to not use sudo, you'll need udev rules. With your board plugged in and in bootloader mode, use `lsusb` to find your vendorid, seen here as 239a
+```
+Bus 001 Device 087: ID 239a:001b Adafruit Industries Feather M0
+```
+Then put your vendorid below and save to something like /etc/udev/rules.d/99-adafruit-boards.rules
+```
+ATTRS{idVendor}=="239a", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="239a", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="239a", MODE="0666"
+```
+Then reboot or run
+```
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+### mac
 
 On mac, as of Catalina you will get a permissions prompt and must follow directions to allow "Input Monitoring" for the Terminal application. 
 
