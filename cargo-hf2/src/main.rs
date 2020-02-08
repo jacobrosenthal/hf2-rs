@@ -24,7 +24,7 @@ fn main() {
     let opt = Opt::from_iter(std::env::args().skip(1));
 
     // Try and get the cargo project information.
-    let project = cargo_project::Project::query(".").unwrap();
+    let project = cargo_project::Project::query(".").expect("Couldn't parse the Cargo.toml");
 
     // Decide what artifact to use.
     let artifact = if let Some(bin) = &opt.bin {
@@ -50,7 +50,7 @@ fn main() {
             opt.target.as_ref().map(|t| &**t),
             "x86_64-unknown-linux-gnu",
         )
-        .unwrap();
+        .expect("Couldn't find the build result");
 
     // Remove first two args which is the calling application name and the `hf2` command from cargo.
     let mut args: Vec<_> = std::env::args().skip(2).collect();
@@ -134,7 +134,7 @@ fn main() {
     // Start timer.
     let instant = Instant::now();
 
-    flash_elf(path, &d).unwrap();
+    flash_elf(path, &d);
 
     // Stop timer.
     let elapsed = instant.elapsed();
@@ -162,10 +162,10 @@ impl MemoryRange for core::ops::Range<u32> {
 }
 
 /// Starts the download of a elf file.
-fn flash_elf(path: PathBuf, d: &HidDevice) -> Result<(), Error> {
-    let mut file = File::open(path)?;
+fn flash_elf(path: PathBuf, d: &HidDevice) {
+    let mut file = File::open(path).unwrap();
     let mut buffer = vec![];
-    file.read_to_end(&mut buffer)?;
+    file.read_to_end(&mut buffer).unwrap();
 
     if let Ok(binary) = goblin::elf::Elf::parse(&buffer.as_slice()) {
         for ph in &binary.program_headers {
@@ -177,15 +177,15 @@ fn flash_elf(path: PathBuf, d: &HidDevice) -> Result<(), Error> {
             }
         }
     }
-    Ok(())
 }
 
-fn flash(binary: &[u8], address: u32, d: &HidDevice) -> Result<(), hf2::Error> {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+fn flash(binary: &[u8], address: u32, d: &HidDevice) {
+    let bininfo: BinInfoResponse = BinInfo {}.send(&d).expect("BinInfo failed");
+
     log::debug!("{:?}", bininfo);
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&d)?;
+        let _ = StartFlash {}.send(&d).expect("StartFlash failed");
     }
 
     let mut binary = binary.to_owned();
@@ -221,7 +221,8 @@ fn flash(binary: &[u8], address: u32, d: &HidDevice) -> Result<(), hf2::Error> {
             target_address,
             num_pages,
         }
-        .send(&d)?;
+        .send(&d)
+        .expect("ChksumPages failed");
         device_checksums.extend_from_slice(&chk.chksums[..]);
     }
     log::debug!("checksums received {:04X?}", device_checksums);
@@ -245,14 +246,14 @@ fn flash(binary: &[u8], address: u32, d: &HidDevice) -> Result<(), hf2::Error> {
                 target_address,
                 data: page.to_vec(),
             }
-            .send(&d)?;
+            .send(&d)
+            .expect("WriteFlashPage failed");
         } else {
             log::debug!("not updating page {}", page_index,);
         }
     }
 
-    let _ = ResetIntoApp {}.send(&d)?;
-    Ok(())
+    let _ = ResetIntoApp {}.send(&d).expect("ResetIntoApp failed");
 }
 
 fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
