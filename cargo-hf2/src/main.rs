@@ -168,13 +168,21 @@ fn flash_elf(path: PathBuf, d: &HidDevice) {
     file.read_to_end(&mut buffer).unwrap();
 
     if let Ok(binary) = goblin::elf::Elf::parse(&buffer.as_slice()) {
-        for ph in &binary.program_headers {
-            if ph.p_type == PT_LOAD && ph.p_filesz > 0 {
-                let address = ph.p_paddr as u32;
+        //todo this could send multiple binary sections..
+        let flashed: u8 = binary
+            .program_headers
+            .iter()
+            .filter(|ph| ph.p_type == PT_LOAD && ph.p_filesz > 0)
+            .map(|ph| {
                 let data = &buffer[(ph.p_offset as usize)..][..ph.p_filesz as usize];
+                flash(data, ph.p_paddr as u32, &d);
+                1
+            })
+            .sum();
 
-                flash(data, address, &d)?;
-            }
+        //ideally only reset if we actually sent something
+        if flashed > 0 {
+            let _ = ResetIntoApp {}.send(&d).expect("ResetIntoApp failed");
         }
     }
 }
@@ -252,8 +260,6 @@ fn flash(binary: &[u8], address: u32, d: &HidDevice) {
             log::debug!("not updating page {}", page_index,);
         }
     }
-
-    let _ = ResetIntoApp {}.send(&d).expect("ResetIntoApp failed");
 }
 
 fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
