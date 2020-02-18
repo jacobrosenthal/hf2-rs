@@ -92,6 +92,8 @@ impl TryFrom<u8> for PacketType {
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for CommandResponse {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
+        println!("{:?} {:02X?}", this.len(), this);
+
         if this.len() < 4 {
             return Err(Error::Parse);
         }
@@ -207,26 +209,40 @@ pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
     let mut bitsnbytes: Vec<u8> = vec![];
 
     let buffer = &mut [0_u8; 64];
+    let mut retries = 5;
 
     // keep reading until Final packet
-    while {
+    'outer: while {
         let count = d.my_read(buffer)?;
 
         log::debug!("rx count: {:?}", count);
+        dbg!();
 
         if count < 1 {
-            return Err(Error::Parse);
+            if retries <= 0 {
+                return Err(Error::Parse);
+            } else {
+                dbg!("RETRYYING");
+                retries -= 1;
+                continue 'outer;
+            }
         }
+        dbg!();
 
         let ptype = PacketType::try_from(buffer[0] >> 6)?;
+        dbg!();
 
         log::debug!("rx ptype: {:?}", ptype);
 
         let len: usize = (buffer[0] & 0x3F) as usize;
+        dbg!();
 
         log::debug!("rx len: {:?}", len);
+        dbg!();
 
         if len >= count {
+            dbg!();
+
             return Err(Error::Parse);
         }
 
@@ -236,12 +252,21 @@ pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
             &buffer[1..=len]
         );
 
+        dbg!();
+
         //skip the header byte and strip excess bytes remote is allowed to send
         bitsnbytes.extend_from_slice(&buffer[1..=len]);
+        dbg!();
 
         //funky do while notation
         ptype == PacketType::Inner
     } {}
+
+    println!(
+        "{:?} {:02X?}",
+        bitsnbytes.as_slice().len(),
+        bitsnbytes.as_slice()
+    );
 
     let resp = bitsnbytes.as_slice().pread_with::<CommandResponse>(0, LE)?;
 
