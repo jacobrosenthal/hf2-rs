@@ -207,15 +207,21 @@ pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
     let mut bitsnbytes: Vec<u8> = vec![];
 
     let buffer = &mut [0_u8; 64];
+    let mut retries = 5;
 
     // keep reading until Final packet
-    while {
+    'outer: while {
         let count = d.my_read(buffer)?;
 
         log::debug!("rx count: {:?}", count);
 
         if count < 1 {
-            return Err(Error::Parse);
+            if retries <= 0 {
+                return Err(Error::Parse);
+            } else {
+                retries -= 1;
+                continue 'outer;
+            }
         }
 
         let ptype = PacketType::try_from(buffer[0] >> 6)?;
