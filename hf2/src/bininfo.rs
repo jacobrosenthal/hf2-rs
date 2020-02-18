@@ -51,7 +51,7 @@ pub struct BinInfoResponse {
     pub flash_page_size: u32,
     pub flash_num_pages: u32,
     pub max_message_size: u32,
-    pub family_id: FamilyId, // optional?
+    pub family_id: Option<FamilyId>,
 }
 
 #[allow(non_camel_case_types)]
@@ -85,7 +85,7 @@ impl From<u32> for FamilyId {
 impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResponse {
     type Error = Error;
     fn try_from_ctx(this: &'a [u8], le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        if this.len() < 20 {
+        if this.len() < 16 {
             return Err(Error::Parse);
         }
 
@@ -98,8 +98,12 @@ impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for BinInfoResponse {
         let flash_num_pages = this.gread_with::<u32>(&mut offset, le)?;
         let max_message_size = this.gread_with::<u32>(&mut offset, le)?;
 
-        //todo, not sure if optional means it would be 0, or would not be included at all
-        let family_id: FamilyId = this.gread_with::<u32>(&mut offset, le)?.into();
+        let family_id = if this.len() >= 20 {
+            let family_id: FamilyId = this.gread_with::<u32>(&mut offset, le)?.into();
+            Some(family_id)
+        } else {
+            None
+        };
 
         Ok((
             BinInfoResponse {
