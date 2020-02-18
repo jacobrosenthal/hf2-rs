@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-fn main() -> Result<(), Error> {
+fn main() {
     pretty_env_logger::init();
 
     let args = Opt::from_args();
@@ -23,15 +23,15 @@ fn main() -> Result<(), Error> {
         let mut device: Option<HidDevice> = None;
 
         let vendor = hashmap! {
-        0x1D50 => vec![0x6110, 0x6112],
-        0x239A => vec![0x0035, 0x002D, 0x0015, 0x001B, 0xB000, 0x0024, 0x000F, 0x0013, 0x0021, 0x0022, 0x0031, 0x002B, 0x0037, 0x0035, 0x002F, 0x002B, 0x0033, 0x0034, 0x003D, 0x0018, 0x001C, 0x001E, 0x0027, 0x0022],
-        0x04D8=> vec![0xEDB3, 0xEDBE, 0xEF66],
-        0x2341=>vec![0x024E, 0x8053, 0x024D],
-        0x16D0=>vec![0x0CDA],
-        0x03EB=>vec![0x2402],
-        0x2886=>vec![0x000D],
-        0x1B4F=>vec![0x0D23, 0x0D22],
-        0x1209=>vec![0x4D44, 0x2017],
+            0x1D50 => vec![0x6110, 0x6112],
+            0x239A => vec![0x0035, 0x002D, 0x0015, 0x001B, 0xB000, 0x0024, 0x000F, 0x0013, 0x0021, 0x0022, 0x0031, 0x002B, 0x0037, 0x0035, 0x002F, 0x002B, 0x0033, 0x0034, 0x003D, 0x0018, 0x001C, 0x001E, 0x0027, 0x0022],
+            0x04D8 => vec![0xEDB3, 0xEDBE, 0xEF66],
+            0x2341 => vec![0x024E, 0x8053, 0x024D],
+            0x16D0 => vec![0x0CDA],
+            0x03EB => vec![0x2402],
+            0x2886 => vec![0x000D],
+            0x1B4F => vec![0x0D23, 0x0D22],
+            0x1209 => vec![0x4D44, 0x2017],
         };
 
         for device_info in api.devices() {
@@ -54,63 +54,56 @@ fn main() -> Result<(), Error> {
     );
 
     match args.cmd {
-        Cmd::resetIntoApp => reset_into_app(&d)?,
-        Cmd::resetIntoBootloader => reset_into_bootloader(&d)?,
-        Cmd::info => info(&d)?,
-        Cmd::bininfo => bininfo(&d)?,
-        Cmd::dmesg => dmesg(&d)?,
-        Cmd::flash { file, address } => flash(file, address, &d)?,
-        Cmd::verify { file, address } => verify(file, address, &d)?,
+        Cmd::resetIntoApp => reset_into_app(&d),
+        Cmd::resetIntoBootloader => reset_into_bootloader(&d),
+        Cmd::info => info(&d),
+        Cmd::bininfo => bininfo(&d),
+        Cmd::dmesg => dmesg(&d),
+        Cmd::flash { file, address } => flash(file, address, &d),
+        Cmd::verify { file, address } => verify(file, address, &d),
     }
-
-    Ok(())
 }
 
-fn reset_into_app(d: &HidDevice) -> Result<(), Error> {
-    let _ = ResetIntoApp {}.send(&d)?;
-    Ok(())
+fn reset_into_app(d: &HidDevice) {
+    let _ = ResetIntoApp {}.send(&d).expect("ResetIntoApp failed");
 }
 
-fn reset_into_bootloader(d: &HidDevice) -> Result<(), Error> {
+fn reset_into_bootloader(d: &HidDevice) {
     let _ = ResetIntoBootloader {}.send(&d);
-    Ok(())
 }
 
-fn info(d: &HidDevice) -> Result<(), Error> {
-    let info: InfoResponse = Info {}.send(&d)?;
+fn info(d: &HidDevice) {
+    let info: InfoResponse = Info {}.send(&d).expect("InfoResponse failed");
     println!("{:?}", info);
-    Ok(())
 }
 
-fn bininfo(d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+fn bininfo(d: &HidDevice) {
+    let bininfo: BinInfoResponse = BinInfo {}.send(&d).expect("BinInfo failed");
     println!(
         "{:?} {:?}kb",
         bininfo,
         bininfo.flash_num_pages * bininfo.flash_page_size / 1024
     );
-    Ok(())
 }
 
-fn dmesg(d: &HidDevice) -> Result<(), Error> {
+fn dmesg(d: &HidDevice) {
     // todo, test. not supported on my board
-    let dmesg: DmesgResponse = Dmesg {}.send(&d)?;
+    let dmesg: DmesgResponse = Dmesg {}.send(&d).expect("DmesgResponse failed");
     println!("{:?}", dmesg);
-    Ok(())
 }
 
-fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+fn flash(file: PathBuf, address: u32, d: &HidDevice) {
+    let bininfo: BinInfoResponse = BinInfo {}.send(&d).expect("BinInfo failed");
     log::debug!("{:?}", bininfo);
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&d)?;
+        let _ = StartFlash {}.send(&d).expect("StartFlash failed");
     }
 
     //shouldnt there be a chunking interator for this?
-    let mut f = File::open(file)?;
+    let mut f = File::open(file).unwrap();
     let mut binary = Vec::new();
-    f.read_to_end(&mut binary)?;
+    f.read_to_end(&mut binary).unwrap();
 
     //pad zeros to page size
     let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;
@@ -143,7 +136,8 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
             target_address,
             num_pages,
         }
-        .send(&d)?;
+        .send(&d)
+        .expect("ChksumPages failed");
         device_checksums.extend_from_slice(&chk.chksums[..]);
     }
     log::debug!("checksums received {:04X?}", device_checksums);
@@ -167,28 +161,28 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
                 target_address,
                 data: page.to_vec(),
             }
-            .send(&d)?;
+            .send(&d)
+            .expect("WriteFlashPage failed");
         } else {
             log::debug!("not updating page {}", page_index,);
         }
     }
 
     println!("Success");
-    let _ = ResetIntoApp {}.send(&d)?;
-    Ok(())
+    let _ = ResetIntoApp {}.send(&d).expect("ResetIntoApp failed");
 }
 
-fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d)?;
+fn verify(file: PathBuf, address: u32, d: &HidDevice) {
+    let bininfo: BinInfoResponse = BinInfo {}.send(&d).expect("BinInfo failed");
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&d)?;
+        let _ = StartFlash {}.send(&d).expect("StartFlash failed");
     }
 
     //shouldnt there be a chunking interator for this?
-    let mut f = File::open(file)?;
+    let mut f = File::open(file).unwrap();
     let mut binary = Vec::new();
-    f.read_to_end(&mut binary)?;
+    f.read_to_end(&mut binary).unwrap();
 
     //pad zeros to page size
     let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;
@@ -215,7 +209,8 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
             target_address,
             num_pages,
         }
-        .send(&d)?;
+        .send(&d)
+        .expect("ChksumPages failed");
         device_checksums.extend_from_slice(&chk.chksums[..]);
     }
 
@@ -235,8 +230,6 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) -> Result<(), Error> {
         &device_checksums[..binary_checksums.len()]
     );
     println!("Success");
-
-    Ok(())
 }
 
 fn parse_hex_32(input: &str) -> Result<u32, std::num::ParseIntError> {
