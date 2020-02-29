@@ -1,11 +1,12 @@
 # hf2
 Implements [Microsofts HID Flashing Format (HF2)](https://github.com/microsoft/uf2/blob/86e101e3a282553756161fe12206c7a609975e70/hf2.md) to upload firmware to UF2 bootloaders. UF2 is factory programmed extensively by [Microsoft MakeCode](https://www.microsoft.com/en-us/makecode) and [Adafruit](https://www.adafruit.com) hardware.
 
-## install and setup
-
-Utilizes the [hidapi-sys crate](https://crates.io/crates/hidapi) which may require libusb or other dependencies, see [hidapi](https://github.com/libusb/hidapi#linux) for further directions.
+## prerequisites
+Utilizes the [hidapi-sys crate](https://crates.io/crates/hidapi) which uses [libusb](https://github.com/libusb/hidapi).
 
 ### linux
+Youll need libusb depending on your distro you might do `sudo apt-get install libudev-dev libusb-1.0-0-dev`.
+
 If you'd like to not use sudo, you'll need udev rules. With your board plugged in and in bootloader mode, use `lsusb` to find your vendorid, seen here as 239a
 ```
 Bus 001 Device 087: ID 239a:001b Adafruit Industries Feather M0
@@ -23,11 +24,12 @@ sudo udevadm trigger
 ```
 
 ### mac
-
 On mac, as of Catalina you will get a permissions prompt and must follow directions to allow "Input Monitoring" for the Terminal application. 
 
-## use
+## install
+`cargo install cargo-hf2`
 
+## use
 ```
 let chk: ChksumPagesResponse = ChksumPages {
     0x4000,
