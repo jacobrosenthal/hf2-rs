@@ -15,7 +15,7 @@ readme = "readme.md"
 structopt = "0.3.2"
 colored = "1.8.0"
 hf2 = { version = "0.1.1", path="../hf2" }
-hidapi = "1.1.0"
+hidapi = "1.2.1"
 goblin = "0.0.24"
 hexdump = "0.1.0"
 cargo-project = "0.2.2"
