@@ -109,9 +109,9 @@ fn main() {
             0x1209 => vec![0x4D44, 0x2017],
         };
 
-        for device_info in api.devices() {
-            if let Some(products) = vendor.get(&device_info.vendor_id) {
-                if products.contains(&device_info.product_id) {
+        for device_info in api.device_list() {
+            if let Some(products) = vendor.get(&device_info.vendor_id()) {
+                if products.contains(&device_info.product_id()) {
                     if let Ok(d) = device_info.open_device(&api) {
                         device = Some(d);
                         break;
