@@ -1,9 +1,6 @@
 /// Errors and traits to build a command
 pub mod command;
 pub use command::*;
-///trait to implement HID devices
-pub mod mock;
-pub use mock::*;
 /// This command states the current mode of the device:
 pub mod bininfo;
 pub use bininfo::*;
@@ -34,3 +31,22 @@ pub use writeflashpage::*;
 ///Dual of READ WORDS, with the same constraints. No Result.
 pub mod writewords;
 pub use writewords::*;
+
+#[derive(Clone, Debug)]
+pub enum Error {
+    Arguments,
+    Parse,
+    CommandNotRecognized,
+    Execution,
+    Sequence,
+    Transmission,
+}
+
+///trait to implement HID devices
+pub trait ReadWrite {
+    fn hf2_write(&self, data: &[u8]) -> Result<usize, Error>;
+    fn hf2_read(&self, buf: &mut [u8]) -> Result<usize, Error>;
+}
+
+#[cfg(feature = "hidapi")]
+pub mod hidapi_trait;

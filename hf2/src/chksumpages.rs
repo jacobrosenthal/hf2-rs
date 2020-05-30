@@ -1,4 +1,5 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
+use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander};
+use crate::Error;
 use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
 
 ///Compute checksum of a number of pages. Maximum value for num_pages is max_message_size / 2 - 2. The checksum algorithm used is CRC-16-CCITT.

@@ -1,4 +1,5 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
+use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander};
+use crate::Error;
 use scroll::{ctx, ctx::TryIntoCtx, Pread, Pwrite, LE};
 
 ///Read a number of words from memory. Memory is read word by word (and not byte by byte), and target_addr must be suitably aligned. This is to support reading of special IO regions.

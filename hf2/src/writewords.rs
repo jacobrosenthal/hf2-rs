@@ -1,4 +1,5 @@
-use crate::command::{rx, xmit, Command, Commander, Error, NoResponse};
+use crate::command::{rx, xmit, Command, Commander, NoResponse};
+use crate::Error;
 use scroll::{ctx::TryIntoCtx, Pwrite, LE};
 
 ///Dual of READ WORDS, with the same constraints. No Result.

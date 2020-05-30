@@ -1,4 +1,5 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
+use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander};
+use crate::Error;
 use core::convert::TryFrom;
 use scroll::{ctx, Pread, LE};
 

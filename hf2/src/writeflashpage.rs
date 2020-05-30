@@ -1,4 +1,5 @@
-use crate::command::{rx, xmit, Command, Commander, Error, NoResponse};
+use crate::command::{rx, xmit, Command, Commander, NoResponse};
+use crate::Error;
 use scroll::{ctx, ctx::TryIntoCtx, Pwrite, LE};
 
 ///Write a single page of flash memory. No Result.

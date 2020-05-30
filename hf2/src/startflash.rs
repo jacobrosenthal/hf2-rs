@@ -1,4 +1,5 @@
-use crate::command::{rx, xmit, Command, Commander, Error, NoResponse};
+use crate::command::{rx, xmit, Command, Commander, NoResponse};
+use crate::Error;
 
 /// When issued in bootloader mode, it has no effect. In user-space mode it causes handover to bootloader. A BININFO command can be issued to verify that.
 pub struct StartFlash {}

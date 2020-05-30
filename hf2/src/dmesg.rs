@@ -1,4 +1,5 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
+use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander};
+use crate::Error;
 use scroll::{ctx, Pread, LE};
 
 ///Return internal log buffer if any. The result is a character array.

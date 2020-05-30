@@ -1,4 +1,5 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
+use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander};
+use crate::Error;
 use scroll::{ctx, Pread, LE};
 
 /// Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
