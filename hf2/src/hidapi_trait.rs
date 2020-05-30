@@ -6,7 +6,7 @@ impl ReadWrite for HidDevice {
         self.write(data).map_err(|e| e.into())
     }
     fn hf2_read(&self, buf: &mut [u8]) -> Result<usize, Error> {
-        self.read(buf).map_err(|e| e.into())
+        self.read_timeout(buf, 1000).map_err(|e| e.into())
     }
 }
 

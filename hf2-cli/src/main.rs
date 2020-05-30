@@ -1,5 +1,5 @@
 use crc_any::CRCu16;
-use hf2::*;
+
 use hidapi::{HidApi, HidDevice};
 use maplit::hashmap;
 use std::fs::File;
@@ -54,31 +54,26 @@ fn main() {
     );
 
     match args.cmd {
-        Cmd::resetIntoApp => reset_into_app(&d),
-        Cmd::resetIntoBootloader => reset_into_bootloader(&d),
+        Cmd::resetIntoApp => hf2::reset_into_app(&d).unwrap(),
+        Cmd::resetIntoBootloader => hf2::reset_into_bootloader(&d).unwrap(),
         Cmd::info => info(&d),
         Cmd::bininfo => bininfo(&d),
         Cmd::dmesg => dmesg(&d),
         Cmd::flash { file, address } => flash(file, address, &d),
         Cmd::verify { file, address } => verify(file, address, &d),
     }
-}
 
-fn reset_into_app(d: &HidDevice) {
-    let _ = ResetIntoApp {}.send(&d).expect("ResetIntoApp failed");
-}
-
-fn reset_into_bootloader(d: &HidDevice) {
-    let _ = ResetIntoBootloader {}.send(&d);
+    //Not sure whats holding open now?
+    std::process::exit(1);
 }
 
 fn info(d: &HidDevice) {
-    let info: InfoResponse = Info {}.send(&d).expect("InfoResponse failed");
+    let info = hf2::info(&d).expect("info failed");
     println!("{:?}", info);
 }
 
 fn bininfo(d: &HidDevice) {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d).expect("BinInfo failed");
+    let bininfo = hf2::bin_info(&d).expect("bin_info failed");
     println!(
         "{:?} {:?}kb",
         bininfo,
@@ -88,16 +83,16 @@ fn bininfo(d: &HidDevice) {
 
 fn dmesg(d: &HidDevice) {
     // todo, test. not supported on my board
-    let dmesg: DmesgResponse = Dmesg {}.send(&d).expect("DmesgResponse failed");
+    let dmesg = hf2::dmesg(&d).expect("dmesg failed");
     println!("{:?}", dmesg);
 }
 
 fn flash(file: PathBuf, address: u32, d: &HidDevice) {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d).expect("BinInfo failed");
+    let bininfo = hf2::bin_info(&d).expect("bin_info failed");
     log::debug!("{:?}", bininfo);
 
-    if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&d).expect("StartFlash failed");
+    if bininfo.mode != hf2::BinInfoMode::Bootloader {
+        let _ = hf2::start_flash(&d).expect("start_flash failed");
     }
 
     //shouldnt there be a chunking interator for this?
@@ -132,13 +127,9 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) {
         } else {
             max_pages
         };
-        let chk: ChksumPagesResponse = ChksumPages {
-            target_address,
-            num_pages,
-        }
-        .send(&d)
-        .expect("ChksumPages failed");
-        device_checksums.extend_from_slice(&chk.chksums[..]);
+        let chk =
+            hf2::checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
+        device_checksums.extend_from_slice(&chk.checksums[..]);
     }
     log::debug!("checksums received {:04X?}", device_checksums);
 
@@ -157,26 +148,22 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) {
             );
 
             let target_address = address + bininfo.flash_page_size * page_index as u32;
-            let _ = WriteFlashPage {
-                target_address,
-                data: page.to_vec(),
-            }
-            .send(&d)
-            .expect("WriteFlashPage failed");
+            let _ = hf2::write_flash_page(&d, target_address, page.to_vec())
+                .expect("write_flash_page failed");
         } else {
             log::debug!("not updating page {}", page_index,);
         }
     }
 
     println!("Success");
-    let _ = ResetIntoApp {}.send(&d).expect("ResetIntoApp failed");
+    let _ = hf2::reset_into_app(&d).expect("reset_into_app failed");
 }
 
 fn verify(file: PathBuf, address: u32, d: &HidDevice) {
-    let bininfo: BinInfoResponse = BinInfo {}.send(&d).expect("BinInfo failed");
+    let bininfo = hf2::bin_info(&d).expect("bin_info failed");
 
-    if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = StartFlash {}.send(&d).expect("StartFlash failed");
+    if bininfo.mode != hf2::BinInfoMode::Bootloader {
+        let _ = hf2::start_flash(&d).expect("start_flash failed");
     }
 
     //shouldnt there be a chunking interator for this?
@@ -205,13 +192,9 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) {
         } else {
             max_pages
         };
-        let chk: ChksumPagesResponse = ChksumPages {
-            target_address,
-            num_pages,
-        }
-        .send(&d)
-        .expect("ChksumPages failed");
-        device_checksums.extend_from_slice(&chk.chksums[..]);
+        let chk =
+            hf2::checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
+        device_checksums.extend_from_slice(&chk.checksums[..]);
     }
 
     let mut binary_checksums = vec![];

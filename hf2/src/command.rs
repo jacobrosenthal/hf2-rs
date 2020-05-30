@@ -1,6 +1,6 @@
 use crate::{Error, ReadWrite};
 use core::convert::TryFrom;
-use log;
+
 use scroll::{ctx, Pread, Pwrite, LE};
 
 impl From<scroll::Error> for Error {
@@ -18,30 +18,6 @@ impl From<core::str::Utf8Error> for Error {
 impl From<std::io::Error> for Error {
     fn from(_err: std::io::Error) -> Self {
         Error::Arguments
-    }
-}
-
-pub fn send<'a, C, RES>(command: &C, d: &hidapi::HidDevice) -> Result<RES, Error>
-where
-    C: Commander<'a, RES>,
-    RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>,
-{
-    command.send(d)
-}
-
-pub trait Commander<'a, RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>> {
-    const ID: u32;
-
-    fn send(&self, d: &hidapi::HidDevice) -> Result<RES, Error>;
-}
-
-pub struct NoResponse {}
-
-//todo, don't
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for NoResponse {
-    type Error = Error;
-    fn try_from_ctx(_this: &'a [u8], _le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        Ok((NoResponse {}, 0))
     }
 }
 
@@ -161,12 +137,10 @@ impl Command {
 pub(crate) fn xmit(cmd: Command, d: &impl ReadWrite) -> Result<(), Error> {
     log::debug!("{:?}", cmd);
 
-    //Packets are up to 64 bytes long
+    //Packets are up to 64 bytes long + first byte is Report ID,
     let buffer = &mut [0_u8; 65];
 
-    buffer[0] = 0; // Report ID
-
-    // header is at 1 so start at 2
+    // Report ID at 0, hardcoded to 0, header at 1 filled in later, so start at 2
     let mut offset = 2;
 
     //command struct is 8 bytes
@@ -181,20 +155,14 @@ pub(crate) fn xmit(cmd: Command, d: &impl ReadWrite) -> Result<(), Error> {
     } else {
         cmd.data.len()
     };
-    for (i, val) in cmd.data[..count].iter().enumerate() {
-        buffer[i + offset] = *val;
-    }
-
-    //add those bytes to the offset too
-    offset += count;
+    buffer.gwrite(&cmd.data[..count], &mut offset)?;
 
     //subtract header from offset for packet size
     if count == cmd.data.len() {
         buffer[1] = (PacketType::Final as u8) << 6 | (offset - 2) as u8;
         log::debug!("tx: {:02X?}", &buffer[..offset]);
 
-        d.hf2_write(&buffer[..offset])?;
-        return Ok(());
+        return d.hf2_write(&buffer[..offset]).map(|_| ());
     } else {
         buffer[1] = (PacketType::Inner as u8) << 6 | (offset - 2) as u8;
         log::debug!("tx: {:02X?}", &buffer[..offset]);
@@ -203,7 +171,7 @@ pub(crate) fn xmit(cmd: Command, d: &impl ReadWrite) -> Result<(), Error> {
     }
 
     //send the rest in chunks up to 63
-    for chunk in cmd.data[count..].chunks(64 - 1 as usize) {
+    for chunk in cmd.data[count..].chunks(63) {
         count += chunk.len();
 
         if count == cmd.data.len() {
@@ -212,9 +180,7 @@ pub(crate) fn xmit(cmd: Command, d: &impl ReadWrite) -> Result<(), Error> {
             buffer[1] = (PacketType::Inner as u8) << 6 | chunk.len() as u8;
         }
 
-        for (i, val) in chunk.iter().enumerate() {
-            buffer[i + 2] = *val
-        }
+        buffer[2..(chunk.len() + 2)].copy_from_slice(chunk);
 
         log::debug!("tx: {:02X?}", &buffer[..(chunk.len() + 2)]);
         d.hf2_write(&buffer[..(chunk.len() + 2)])?;
@@ -259,17 +225,17 @@ pub(crate) fn rx(d: &impl ReadWrite) -> Result<CommandResponse, Error> {
         log::debug!(
             "rx header: {:02X?} data: {:02X?}",
             &buffer[0],
-            &buffer[1..=len]
+            &buffer[1..(len + 1)]
         );
 
         //skip the header byte and strip excess bytes remote is allowed to send
-        bitsnbytes.extend_from_slice(&buffer[1..=len]);
+        bitsnbytes.extend_from_slice(&buffer[1..(len + 1)]);
 
         //funky do while notation
         ptype == PacketType::Inner
     } {}
 
-    let resp = bitsnbytes.as_slice().pread_with::<CommandResponse>(0, LE)?;
+    let resp = bitsnbytes.as_slice().pread_with(0, LE)?;
 
     log::debug!("{:?}", resp);
 

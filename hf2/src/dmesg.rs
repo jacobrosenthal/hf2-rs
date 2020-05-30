@@ -1,30 +1,24 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander};
+use crate::command::{rx, xmit, Command, CommandResponse, CommandResponseStatus};
 use crate::Error;
 use scroll::{ctx, Pread, LE};
 
 ///Return internal log buffer if any. The result is a character array.
-pub struct Dmesg {}
 
-impl<'a> Commander<'a, DmesgResponse> for Dmesg {
-    const ID: u32 = 0x0010;
+pub fn dmesg(d: &hidapi::HidDevice) -> Result<DmesgResponse, Error> {
+    xmit(Command::new(0x0010, 0, vec![]), d)?;
 
-    fn send(&self, d: &hidapi::HidDevice) -> Result<DmesgResponse, Error> {
-        let command = Command::new(Self::ID, 0, vec![]);
-
-        xmit(command, d)?;
-
-        let rsp = rx(d)?;
-
-        if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::CommandNotRecognized);
-        }
-
-        let res: DmesgResponse = (rsp.data.as_slice()).pread_with::<DmesgResponse>(0, LE)?;
-
-        Ok(res)
+    match rx(d) {
+        Ok(CommandResponse {
+            status: CommandResponseStatus::Success,
+            data,
+            ..
+        }) => return (data.as_slice()).pread_with(0, LE),
+        Ok(_) => return Err(Error::CommandNotRecognized),
+        Err(e) => return Err(e),
     }
 }
 
+///Response to the dmesg command
 #[derive(Debug, PartialEq)]
 pub struct DmesgResponse {
     pub logs: String,
