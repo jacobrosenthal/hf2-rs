@@ -76,12 +76,7 @@ fn main() {
         .unwrap();
 
     if !status.success() {
-        use std::os::unix::process::ExitStatusExt;
-        let status = status
-            .code()
-            .or_else(|| if cfg!(unix) { status.signal() } else { None })
-            .unwrap_or(1);
-        std::process::exit(status);
+        exit_with_process_status(status)
     }
 
     let api = HidApi::new().expect("Couldn't find system usb");
@@ -143,6 +138,19 @@ fn main() {
         "Finished".green().bold(),
         elapsed.as_millis() as f32 / 1000.0
     );
+}
+
+#[cfg(unix)]
+fn exit_with_process_status(status: std::process::ExitStatus) -> ! {
+    use std::os::unix::process::ExitStatusExt;
+    let status = status.code().or_else(|| status.signal()).unwrap_or(1);
+    std::process::exit(status)
+}
+
+#[cfg(not(unix))]
+fn exit_with_process_status(status: std::process::ExitStatus) -> ! {
+    let status = status.code().unwrap_or(1);
+    std::process::exit(status)
 }
 
 pub trait MemoryRange {
