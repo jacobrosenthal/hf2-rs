@@ -1,16 +1,7 @@
-use crate::command::{xmit, Command, Commander, Error, NoResponse};
+use crate::command::{xmit, Command};
+use crate::Error;
 
-///Reset the device into user-space app. Usually, no response at all will arrive for this command.
-pub struct ResetIntoApp {}
-
-impl<'a> Commander<'a, NoResponse> for ResetIntoApp {
-    const ID: u32 = 0x0003;
-
-    fn send(&self, d: &hidapi::HidDevice) -> Result<NoResponse, Error> {
-        let command = Command::new(Self::ID, 0, vec![]);
-
-        xmit(command, d)?;
-
-        Ok(NoResponse {})
-    }
+///Reset the device into user-space app. Empty tuple response.
+pub fn reset_into_app(d: &hidapi::HidDevice) -> Result<(), Error> {
+    xmit(Command::new(0x0003, 0, vec![]), d)
 }

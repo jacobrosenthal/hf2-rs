@@ -1,29 +1,23 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
+use crate::command::{rx, xmit, Command, CommandResponse, CommandResponseStatus};
+use crate::Error;
 use scroll::{ctx, Pread, LE};
 
 /// Various device information. The result is a character array. See INFO_UF2.TXT in UF2 format for details.
-pub struct Info {}
+pub fn info(d: &hidapi::HidDevice) -> Result<InfoResponse, Error> {
+    xmit(Command::new(0x0002, 0, vec![]), d)?;
 
-impl<'a> Commander<'a, InfoResponse> for Info {
-    const ID: u32 = 0x0002;
-
-    fn send(&self, d: &hidapi::HidDevice) -> Result<InfoResponse, Error> {
-        let command = Command::new(Self::ID, 0, vec![]);
-
-        xmit(command, d)?;
-
-        let rsp = rx(d)?;
-
-        if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::CommandNotRecognized);
-        }
-
-        let res: InfoResponse = (rsp.data.as_slice()).pread_with::<InfoResponse>(0, LE)?;
-
-        Ok(res)
+    match rx(d) {
+        Ok(CommandResponse {
+            status: CommandResponseStatus::Success,
+            data,
+            ..
+        }) => return (data.as_slice()).pread_with(0, LE),
+        Ok(_) => return Err(Error::CommandNotRecognized),
+        Err(e) => return Err(e),
     }
 }
 
+///Response to the info command
 #[derive(Debug, PartialEq)]
 pub struct InfoResponse {
     pub info: String,

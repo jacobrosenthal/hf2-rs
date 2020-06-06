@@ -1,4 +1,5 @@
-use crate::command::{rx, xmit, Command, CommandResponseStatus, Commander, Error};
+use crate::command::{rx, xmit, Command, CommandResponse, CommandResponseStatus};
+use crate::Error;
 use core::convert::TryFrom;
 use scroll::{ctx, Pread, LE};
 
@@ -23,28 +24,21 @@ impl TryFrom<u32> for BinInfoMode {
 }
 
 /// This command states the current mode of the device:
-pub struct BinInfo {}
+pub fn bin_info(d: &hidapi::HidDevice) -> Result<BinInfoResponse, Error> {
+    xmit(Command::new(0x0001, 0, vec![]), d)?;
 
-impl<'a> Commander<'a, BinInfoResponse> for BinInfo {
-    const ID: u32 = 0x0001;
-
-    fn send(&self, d: &hidapi::HidDevice) -> Result<BinInfoResponse, Error> {
-        let command = Command::new(Self::ID, 0, vec![]);
-
-        xmit(command, d)?;
-
-        let rsp = rx(d)?;
-
-        if rsp.status != CommandResponseStatus::Success {
-            return Err(Error::CommandNotRecognized);
-        }
-
-        let res: BinInfoResponse = (rsp.data.as_slice()).pread_with::<BinInfoResponse>(0, LE)?;
-
-        Ok(res)
+    match rx(d) {
+        Ok(CommandResponse {
+            status: CommandResponseStatus::Success,
+            data,
+            ..
+        }) => return (data.as_slice()).pread_with(0, LE),
+        Ok(_) => return Err(Error::CommandNotRecognized),
+        Err(e) => return Err(e),
     }
 }
 
+///Response to the bin_info command
 #[derive(Debug, PartialEq)]
 pub struct BinInfoResponse {
     pub mode: BinInfoMode, //    uint32_t mode;

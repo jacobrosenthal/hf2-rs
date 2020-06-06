@@ -9,8 +9,10 @@ keywords = ["uf2", "makecode", "adafruit", "hid", "flash"]
 license = "MIT/Apache-2.0"
 readme = "readme.md"
 
+[features]
+default = ["hidapi"]
 
 [dependencies]
-hidapi = "1.2.1"
-scroll = { version = "0.10.0", features = ["derive"] }
+scroll = { version = "0.10.0" }
 log = "0.4.6"
+hidapi = { version = "1.2.1", optional = true }

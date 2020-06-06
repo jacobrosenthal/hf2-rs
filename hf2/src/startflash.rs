@@ -1,18 +1,9 @@
-use crate::command::{rx, xmit, Command, Commander, Error, NoResponse};
+use crate::command::{rx, xmit, Command};
+use crate::Error;
 
-/// When issued in bootloader mode, it has no effect. In user-space mode it causes handover to bootloader. A BININFO command can be issued to verify that.
-pub struct StartFlash {}
+/// When issued in bootloader mode, it has no effect. In user-space mode it causes handover to bootloader. A BININFO command can be issued to verify that. Empty tuple response.
+pub fn start_flash(d: &hidapi::HidDevice) -> Result<(), Error> {
+    xmit(Command::new(0x0005, 0, vec![]), d)?;
 
-impl<'a> Commander<'a, NoResponse> for StartFlash {
-    const ID: u32 = 0x0005;
-
-    fn send(&self, d: &hidapi::HidDevice) -> Result<NoResponse, Error> {
-        let command = Command::new(Self::ID, 0, vec![]);
-
-        xmit(command, d)?;
-
-        let _ = rx(d)?;
-
-        Ok(NoResponse {})
-    }
+    rx(d).map(|_| ())
 }

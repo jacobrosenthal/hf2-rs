@@ -1,10 +1,8 @@
-use cargo_project;
 use colored::*;
 use crc_any::CRCu16;
 use goblin::elf::program_header::*;
 use hidapi::{HidApi, HidDevice};
 
-use hf2::*;
 use maplit::hashmap;
 use std::{
     fs::File,
@@ -47,7 +45,7 @@ fn main() {
         .path(
             artifact,
             profile,
-            opt.target.as_ref().map(|t| &**t),
+            opt.target.as_deref(),
             "x86_64-unknown-linux-gnu",
         )
         .expect("Couldn't find the build result");
@@ -138,6 +136,9 @@ fn main() {
         "Finished".green().bold(),
         elapsed.as_millis() as f32 / 1000.0
     );
+
+    //Not sure whats holding open now?
+    std::process::exit(1);
 }
 
 #[cfg(unix)]
@@ -176,12 +177,12 @@ fn flash_elf(path: PathBuf, d: &HidDevice) {
     file.read_to_end(&mut buffer).unwrap();
 
     if let Ok(binary) = goblin::elf::Elf::parse(&buffer.as_slice()) {
-        let bininfo: BinInfoResponse = BinInfo {}.send(&d).expect("BinInfo failed");
+        let bininfo = hf2::bin_info(&d).expect("bin_info failed");
 
         log::debug!("{:?}", bininfo);
 
-        if bininfo.mode != BinInfoMode::Bootloader {
-            let _ = StartFlash {}.send(&d).expect("StartFlash failed");
+        if bininfo.mode != hf2::BinInfoMode::Bootloader {
+            let _ = hf2::start_flash(&d).expect("start_flash failed");
         }
 
         //todo this could send multiple binary sections..
@@ -204,12 +205,12 @@ fn flash_elf(path: PathBuf, d: &HidDevice) {
 
         //only reset if we actually sent something
         if flashed > 0 {
-            let _ = ResetIntoApp {}.send(&d).expect("ResetIntoApp failed");
+            let _ = hf2::reset_into_app(&d).expect("reset_into_app failed");
         }
     }
 }
 
-fn flash(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) {
+fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDevice) {
     let mut binary = binary.to_owned();
 
     //pad zeros to page size
@@ -239,13 +240,9 @@ fn flash(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) 
         } else {
             max_pages
         };
-        let chk: ChksumPagesResponse = ChksumPages {
-            target_address,
-            num_pages,
-        }
-        .send(&d)
-        .expect("ChksumPages failed");
-        device_checksums.extend_from_slice(&chk.chksums[..]);
+        let chk =
+            hf2::checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
+        device_checksums.extend_from_slice(&chk.checksums[..]);
     }
     log::debug!("checksums received {:04X?}", device_checksums);
 
@@ -264,12 +261,8 @@ fn flash(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) 
             );
 
             let target_address = address + bininfo.flash_page_size * page_index as u32;
-            let _ = WriteFlashPage {
-                target_address,
-                data: page.to_vec(),
-            }
-            .send(&d)
-            .expect("WriteFlashPage failed");
+            let _ = hf2::write_flash_page(&d, target_address, page.to_vec())
+                .expect("write_flash_page failed");
         } else {
             log::debug!("not updating page {}", page_index,);
         }

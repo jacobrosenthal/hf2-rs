@@ -1,29 +1,23 @@
-use crate::mock::HidMockable;
+use crate::{Error, ReadWrite};
 use core::convert::TryFrom;
-use log;
+
 use scroll::{ctx, Pread, Pwrite, LE};
 
-pub fn send<'a, C, RES>(command: &C, d: &hidapi::HidDevice) -> Result<RES, Error>
-where
-    C: Commander<'a, RES>,
-    RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>,
-{
-    command.send(d)
+impl From<scroll::Error> for Error {
+    fn from(_err: scroll::Error) -> Self {
+        Error::Parse
+    }
 }
 
-pub trait Commander<'a, RES: scroll::ctx::TryFromCtx<'a, scroll::Endian>> {
-    const ID: u32;
-
-    fn send(&self, d: &hidapi::HidDevice) -> Result<RES, Error>;
+impl From<core::str::Utf8Error> for Error {
+    fn from(_err: core::str::Utf8Error) -> Self {
+        Error::Parse
+    }
 }
 
-pub struct NoResponse {}
-
-//todo, don't
-impl<'a> ctx::TryFromCtx<'a, scroll::Endian> for NoResponse {
-    type Error = Error;
-    fn try_from_ctx(_this: &'a [u8], _le: scroll::Endian) -> Result<(Self, usize), Self::Error> {
-        Ok((NoResponse {}, 0))
+impl From<std::io::Error> for Error {
+    fn from(_err: std::io::Error) -> Self {
+        Error::Arguments
     }
 }
 
@@ -140,15 +134,13 @@ impl Command {
 }
 
 ///Transmit a Command, command.data should already have been LE converted
-pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
+pub(crate) fn xmit(cmd: Command, d: &impl ReadWrite) -> Result<(), Error> {
     log::debug!("{:?}", cmd);
 
-    //Packets are up to 64 bytes long
+    //Packets are up to 64 bytes long + first byte is Report ID,
     let buffer = &mut [0_u8; 65];
 
-    buffer[0] = 0; // Report ID
-
-    // header is at 1 so start at 2
+    // Report ID at 0, hardcoded to 0, header at 1 filled in later, so start at 2
     let mut offset = 2;
 
     //command struct is 8 bytes
@@ -163,29 +155,23 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
     } else {
         cmd.data.len()
     };
-    for (i, val) in cmd.data[..count].iter().enumerate() {
-        buffer[i + offset] = *val;
-    }
-
-    //add those bytes to the offset too
-    offset += count;
+    buffer.gwrite(&cmd.data[..count], &mut offset)?;
 
     //subtract header from offset for packet size
     if count == cmd.data.len() {
         buffer[1] = (PacketType::Final as u8) << 6 | (offset - 2) as u8;
         log::debug!("tx: {:02X?}", &buffer[..offset]);
 
-        d.my_write(&buffer[..offset])?;
-        return Ok(());
+        return d.hf2_write(&buffer[..offset]).map(|_| ());
     } else {
         buffer[1] = (PacketType::Inner as u8) << 6 | (offset - 2) as u8;
         log::debug!("tx: {:02X?}", &buffer[..offset]);
 
-        d.my_write(&buffer[..offset])?;
+        d.hf2_write(&buffer[..offset])?;
     }
 
     //send the rest in chunks up to 63
-    for chunk in cmd.data[count..].chunks(64 - 1 as usize) {
+    for chunk in cmd.data[count..].chunks(63) {
         count += chunk.len();
 
         if count == cmd.data.len() {
@@ -194,18 +180,16 @@ pub(crate) fn xmit<T: HidMockable>(cmd: Command, d: &T) -> Result<(), Error> {
             buffer[1] = (PacketType::Inner as u8) << 6 | chunk.len() as u8;
         }
 
-        for (i, val) in chunk.iter().enumerate() {
-            buffer[i + 2] = *val
-        }
+        buffer[2..(chunk.len() + 2)].copy_from_slice(chunk);
 
-        log::debug!("tx: {:02X?}", &buffer[..(chunk.len()+2)]);
-        d.my_write(&buffer[..(chunk.len()+2)])?;
+        log::debug!("tx: {:02X?}", &buffer[..(chunk.len() + 2)]);
+        d.hf2_write(&buffer[..(chunk.len() + 2)])?;
     }
     Ok(())
 }
 
 ///Receive a CommandResponse, CommandResponse.data is not interpreted in any way.
-pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
+pub(crate) fn rx(d: &impl ReadWrite) -> Result<CommandResponse, Error> {
     let mut bitsnbytes: Vec<u8> = vec![];
 
     let buffer = &mut [0_u8; 64];
@@ -213,7 +197,7 @@ pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
 
     // keep reading until Final packet
     'outer: while {
-        let count = d.my_read(buffer)?;
+        let count = d.hf2_read(buffer)?;
 
         log::debug!("rx count: {:?}", count);
 
@@ -241,101 +225,92 @@ pub(crate) fn rx<T: HidMockable>(d: &T) -> Result<CommandResponse, Error> {
         log::debug!(
             "rx header: {:02X?} data: {:02X?}",
             &buffer[0],
-            &buffer[1..=len]
+            &buffer[1..(len + 1)]
         );
 
         //skip the header byte and strip excess bytes remote is allowed to send
-        bitsnbytes.extend_from_slice(&buffer[1..=len]);
+        bitsnbytes.extend_from_slice(&buffer[1..(len + 1)]);
 
         //funky do while notation
         ptype == PacketType::Inner
     } {}
 
-    let resp = bitsnbytes.as_slice().pread_with::<CommandResponse>(0, LE)?;
+    let resp = bitsnbytes.as_slice().pread_with(0, LE)?;
 
     log::debug!("{:?}", resp);
 
     Ok(resp)
 }
 
-#[derive(Clone, Debug)]
-pub enum Error {
-    Arguments,
-    Parse,
-    CommandNotRecognized,
-    Execution,
-    Sequence,
-    Transmission,
-}
-
-impl From<hidapi::HidError> for Error {
-    fn from(_err: hidapi::HidError) -> Self {
-        Error::Transmission
-    }
-}
-
-impl From<scroll::Error> for Error {
-    fn from(_err: scroll::Error) -> Self {
-        Error::Parse
-    }
-}
-
-impl From<core::str::Utf8Error> for Error {
-    fn from(_err: core::str::Utf8Error) -> Self {
-        Error::Parse
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(_err: std::io::Error) -> Self {
-        Error::Arguments
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock::MyMock;
+
+    #[allow(dead_code)]
+    pub struct MyMock<R, W>
+    where
+        R: Fn() -> Vec<u8>,
+        W: Fn(&[u8]) -> usize,
+    {
+        pub reader: R,
+        pub writer: W,
+    }
+
+    impl<R, W> ReadWrite for MyMock<R, W>
+    where
+        R: Fn() -> Vec<u8>,
+        W: Fn(&[u8]) -> usize,
+    {
+        fn hf2_write(&self, data: &[u8]) -> Result<usize, Error> {
+            let len = (&self.writer)(data);
+
+            Ok(len)
+        }
+        fn hf2_read(&self, buf: &mut [u8]) -> Result<usize, Error> {
+            let data = (self.reader)();
+
+            for (i, val) in data.iter().enumerate() {
+                buf[i] = *val
+            }
+
+            Ok(data.len())
+        }
+    }
 
     #[test]
     fn send_fragmented() {
         let data: Vec<Vec<u8>> = vec![
             vec![
-                0x00,
-                0x3f, 0x06, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
-                0x00, 0x03, 0x20, 0xd7, 0x5e, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x51, 0x5f, 0x00,
-                0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00,
-            ],
-            vec![
-                0x00,
-                0x3f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00,
-                0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
+                0x00, 0x3f, 0x06, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00,
+                0x00, 0x00, 0x03, 0x20, 0xd7, 0x5e, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x51, 0x5f,
                 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00,
-                0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
-                0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00,
             ],
             vec![
-                0x00,
-                0x3f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00,
+                0x00, 0x3f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00,
                 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
                 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00,
                 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
-                0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
+                0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
             ],
             vec![
-                0x00,
-                0x3f, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
+                0x00, 0x3f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
                 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00,
                 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f,
                 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
             ],
             vec![
-                0x00,
-                0x50, 0x00, 0x00, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
-                0x5f, 0x00, 0x00,
+                0x00, 0x3f, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
+                0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00,
+                0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d,
+                0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ],
+            vec![
+                0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00, 0x4d, 0x5f, 0x00, 0x00,
+                0x4d, 0x5f, 0x00, 0x00,
             ],
         ];
 
