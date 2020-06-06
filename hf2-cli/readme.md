@@ -2,6 +2,8 @@
 
 Command line implementation of the [hf2 flashing over hid protocol](https://github.com/jacobrosenthal/hf2-rs/tree/master/hf2) commonly used in by [Microsoft MakeCode](https://www.microsoft.com/en-us/makecode) and [Adafruit](https://www.adafruit.com) hardware.
 
+Unless you know otherwise, you probably want [cargo-hf2](https://github.com/jacobrosenthal/hf2-rs)
+
 ## prerequisites
 
 Utilizes the [hidapi-sys crate](https://crates.io/crates/hidapi) which uses [libusb](https://github.com/libusb/hidapi).
@@ -70,6 +72,10 @@ SUBCOMMANDS:
 ```
 
 It will attempt to autodetect a device by sending the bininfo command any whitelisted devices it finds and using the first one that responds or you can specify pid and vid (before the subcommand) instead.
+
+hf2 deals in binaries, not elf files so you're going to have to get a bin with something like `cargo objcopy --example ferris_img --release -- -O binary ferris_img.bin`
+Then you need your bootloaders address offset.
+
 
 ```bash
 hf2 -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000

@@ -2,6 +2,8 @@
 
 Implements [Microsofts HID Flashing Format (HF2)](https://github.com/microsoft/uf2/blob/86e101e3a282553756161fe12206c7a609975e70/hf2.md) to upload firmware to UF2 bootloaders. UF2 is factory programmed extensively by [Microsoft MakeCode](https://www.microsoft.com/en-us/makecode) and [Adafruit](https://www.adafruit.com) hardware.
 
+Unless you know otherwise, you probably want [cargo-hf2](https://github.com/jacobrosenthal/hf2-rs)
+
 ## prerequisites
 
 By default enables the hidapi feature and utilizes the [hidapi-sys crate](https://crates.io/crates/hidapi) which uses [libusb](https://github.com/libusb/hidapi). Otherwise you need to default-features false and then implement ReadWrite trait for your transport.

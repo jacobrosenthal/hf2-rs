@@ -92,5 +92,5 @@ On the PyGamer, 2 button presses enables a blue and green screen that says PyGam
 If you find another error, be sure to run with debug to see where in the process it failed and include those logs when reporting
 
 ```bash
-RUST_LOG=debug hf2 -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
+RUST_LOG=debug cargo hf2 --vid 0x239a --pid 0x003d
 ```
