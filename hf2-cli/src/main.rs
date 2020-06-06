@@ -62,9 +62,6 @@ fn main() {
         Cmd::flash { file, address } => flash(file, address, &d),
         Cmd::verify { file, address } => verify(file, address, &d),
     }
-
-    //Not sure whats holding open now?
-    std::process::exit(1);
 }
 
 fn info(d: &HidDevice) {

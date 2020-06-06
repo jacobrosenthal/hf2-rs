@@ -136,9 +136,6 @@ fn main() {
         "Finished".green().bold(),
         elapsed.as_millis() as f32 / 1000.0
     );
-
-    //Not sure whats holding open now?
-    std::process::exit(1);
 }
 
 #[cfg(unix)]
