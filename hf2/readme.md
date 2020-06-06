@@ -6,7 +6,7 @@ Unless you know otherwise, you probably want [cargo-hf2](https://github.com/jaco
 
 ## prerequisites
 
-By default enables the hidapi feature and utilizes the [hidapi-sys crate](https://crates.io/crates/hidapi) which uses [libusb](https://github.com/libusb/hidapi). Otherwise you need to default-features false and then implement ReadWrite trait for your transport.
+By default enables the hidapi feature and utilizes the [hidapi-sys crate](https://crates.io/crates/hidapi) which uses [libusb](https://github.com/libusb/hidapi). Presumably other transports could be added in the future that implement the ReadWrite trait internally.
 
 ### linux
 
