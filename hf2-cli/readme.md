@@ -39,7 +39,7 @@ On mac, as of Catalina you will get a permissions prompt and must follow directi
 
 ## install
 
-`cargo install cargo-hf2`
+`cargo install hf2-cli`
 
 ## use
 
