@@ -21,9 +21,9 @@ pub fn checksum_pages(
             status: CommandResponseStatus::Success,
             data,
             ..
-        }) => return (data.as_slice()).pread_with(0, LE),
-        Ok(_) => return Err(Error::CommandNotRecognized),
-        Err(e) => return Err(e),
+        }) => (data.as_slice()).pread_with(0, LE),
+        Ok(_) => Err(Error::CommandNotRecognized),
+        Err(e) => Err(e),
     }
 }
 
