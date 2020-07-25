@@ -222,45 +222,8 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
         binary.push(0x0);
     }
 
-    // get checksums of existing pages
-    // let top_address = address + padded_size as u32;
-    // let max_pages = bininfo.max_message_size / 2 - 2;
-    // let steps = max_pages * bininfo.flash_page_size;
-    // let mut device_checksums = vec![];
-
-    // for target_address in (address..top_address).step_by(steps as usize) {
-    //     let pages_left = (top_address - target_address) / bininfo.flash_page_size;
-
-    //     let num_pages = if pages_left < max_pages {
-    //         pages_left
-    //     } else {
-    //         max_pages
-    //     };
-    //     let chk =
-    //         hf2::checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
-    //     device_checksums.extend_from_slice(&chk.checksums[..]);
-    // }
-    // log::debug!("checksums received {:04X?}", device_checksums);
-
-    // only write changed contents
     for (page_index, page) in binary.chunks(bininfo.flash_page_size as usize).enumerate() {
-        let mut xmodem = CRCu16::crc16xmodem();
-
-        xmodem.digest(&page);
-
-        // let mut device_crc = device_checksums[page_index];
-        // let cur_crc = xmodem.get_crc();
-        // let mut retries = 5;
-        // while cur_crc != device_crc && retries > 0 {
         let target_address = address + bininfo.flash_page_size * page_index as u32;
-
-        // log::debug!(
-        //     "ours {:04X?} != {:04X?} them, updating page {} target {:02X?}",
-        //     cur_crc,
-        //     device_crc,
-        //     page_index,
-        //     target_address
-        // );
 
         let _ = hf2::write_flash_page(&d, target_address, page.to_vec())
             .expect("write_flash_page failed");
@@ -289,6 +252,42 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
         //     )
         // }
     }
+
+    let top_address = address + padded_size as u32;
+    let max_pages = bininfo.max_message_size / 2 - 2;
+    let steps = max_pages * bininfo.flash_page_size;
+    let mut device_checksums = vec![];
+
+    for target_address in (address..top_address).step_by(steps as usize) {
+        let pages_left = (top_address - target_address) / bininfo.flash_page_size;
+
+        let num_pages = if pages_left < max_pages {
+            pages_left
+        } else {
+            max_pages
+        };
+        let chk =
+            hf2::checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
+        device_checksums.extend_from_slice(&chk.checksums[..]);
+    }
+    log::debug!("checksums received {:04X?}", device_checksums);
+
+    let mut binary_checksums = vec![];
+
+    //collect and sums so we can view all mismatches, not just first
+    for page in binary.chunks(bininfo.flash_page_size as usize) {
+        let mut xmodem = CRCu16::crc16xmodem();
+        xmodem.digest(&page);
+
+        binary_checksums.push(xmodem.get_crc());
+    }
+
+    //only check as many as our binary has
+    assert_eq!(
+        &binary_checksums[..binary_checksums.len()],
+        &device_checksums[..binary_checksums.len()]
+    );
+    println!("Success");
 }
 
 fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
