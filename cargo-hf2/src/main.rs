@@ -258,7 +258,7 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
             let target_address = address + bininfo.flash_page_size * page_index as u32;
 
             log::debug!(
-                "ours {:04X?} != {:04X?} theirs, updating page {} target {}",
+                "ours {:04X?} != {:04X?} them, updating page {} target {:02X?}",
                 cur_crc,
                 device_crc,
                 page_index,
@@ -281,9 +281,14 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
             let resp = hf2::read_words(&d, target_address, bininfo.flash_page_size / 2)
                 .expect("read_words failed");
 
+            let u8s = resp.words.iter().cloned().fold(vec![], |mut buf, word| {
+                buf.extend_from_slice(&(word as u16).to_le_bytes());
+                buf
+            });
+
             panic!(
-                "ours {:04X?} != {:04X?} theirs, failed 5 retries updating page {}, ours {:04X?} thiers {:04X?}",
-                cur_crc, device_crc, page_index, page.to_vec(), resp.words
+                "ours {:04X?} != {:04X?} them, failed 5 retries updating page {} target {:02X?}\n ours: {:02X?}\n them: {:02X?}",
+                cur_crc, device_crc, page_index, target_address, page.to_vec(), u8s
             )
         }
     }
