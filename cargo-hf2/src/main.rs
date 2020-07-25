@@ -190,13 +190,10 @@ fn flash_elf(path: PathBuf, d: &HidDevice) {
             .map(move |ph| {
                 log::warn!("{:?}", ph);
 
-                log::debug!(
-                    "Flashing {:?} bytes @{:02X?}",
-                    ph.p_filesz as usize,
-                    ph.p_offset as usize,
-                );
-
                 let data = &buffer[ph.p_offset as usize..][..ph.p_filesz as usize];
+
+                // log::warn!("{:?}", data);
+
                 flash(data, ph.p_paddr as u32, &bininfo, &d);
                 1
             })
@@ -226,24 +223,24 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
     }
 
     // get checksums of existing pages
-    let top_address = address + padded_size as u32;
-    let max_pages = bininfo.max_message_size / 2 - 2;
-    let steps = max_pages * bininfo.flash_page_size;
-    let mut device_checksums = vec![];
+    // let top_address = address + padded_size as u32;
+    // let max_pages = bininfo.max_message_size / 2 - 2;
+    // let steps = max_pages * bininfo.flash_page_size;
+    // let mut device_checksums = vec![];
 
-    for target_address in (address..top_address).step_by(steps as usize) {
-        let pages_left = (top_address - target_address) / bininfo.flash_page_size;
+    // for target_address in (address..top_address).step_by(steps as usize) {
+    //     let pages_left = (top_address - target_address) / bininfo.flash_page_size;
 
-        let num_pages = if pages_left < max_pages {
-            pages_left
-        } else {
-            max_pages
-        };
-        let chk =
-            hf2::checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
-        device_checksums.extend_from_slice(&chk.checksums[..]);
-    }
-    log::debug!("checksums received {:04X?}", device_checksums);
+    //     let num_pages = if pages_left < max_pages {
+    //         pages_left
+    //     } else {
+    //         max_pages
+    //     };
+    //     let chk =
+    //         hf2::checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
+    //     device_checksums.extend_from_slice(&chk.checksums[..]);
+    // }
+    // log::debug!("checksums received {:04X?}", device_checksums);
 
     // only write changed contents
     for (page_index, page) in binary.chunks(bininfo.flash_page_size as usize).enumerate() {
@@ -251,46 +248,46 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
 
         xmodem.digest(&page);
 
-        let mut device_crc = device_checksums[page_index];
-        let cur_crc = xmodem.get_crc();
-        let mut retries = 5;
-        while cur_crc != device_crc && retries > 0 {
-            let target_address = address + bininfo.flash_page_size * page_index as u32;
+        // let mut device_crc = device_checksums[page_index];
+        // let cur_crc = xmodem.get_crc();
+        // let mut retries = 5;
+        // while cur_crc != device_crc && retries > 0 {
+        let target_address = address + bininfo.flash_page_size * page_index as u32;
 
-            log::debug!(
-                "ours {:04X?} != {:04X?} them, updating page {} target {:02X?}",
-                cur_crc,
-                device_crc,
-                page_index,
-                target_address
-            );
+        // log::debug!(
+        //     "ours {:04X?} != {:04X?} them, updating page {} target {:02X?}",
+        //     cur_crc,
+        //     device_crc,
+        //     page_index,
+        //     target_address
+        // );
 
-            let _ = hf2::write_flash_page(&d, target_address, page.to_vec())
-                .expect("write_flash_page failed");
+        let _ = hf2::write_flash_page(&d, target_address, page.to_vec())
+            .expect("write_flash_page failed");
 
-            device_crc = hf2::checksum_pages(&d, target_address, 1)
-                .expect("checksum_pages failed")
-                .checksums[0];
+        // device_crc = hf2::checksum_pages(&d, target_address, 1)
+        //     .expect("checksum_pages failed")
+        //     .checksums[0];
 
-            retries -= 1;
-        }
+        //     retries -= 1;
+        // }
 
-        if retries == 0 {
-            let target_address = address + bininfo.flash_page_size * page_index as u32;
+        // if retries == 0 {
+        //     let target_address = address + bininfo.flash_page_size * page_index as u32;
 
-            let resp = hf2::read_words(&d, target_address, bininfo.flash_page_size / 2)
-                .expect("read_words failed");
+        //     let resp = hf2::read_words(&d, target_address, bininfo.flash_page_size / 2)
+        //         .expect("read_words failed");
 
-            let u8s = resp.words.iter().cloned().fold(vec![], |mut buf, word| {
-                buf.extend_from_slice(&(word as u16).to_le_bytes());
-                buf
-            });
+        //     let u8s = resp.words.iter().cloned().fold(vec![], |mut buf, word| {
+        //         buf.extend_from_slice(&(word as u16).to_le_bytes());
+        //         buf
+        //     });
 
-            panic!(
-                "ours {:04X?} != {:04X?} them, failed 5 retries updating page {} target {:02X?}\n ours: {:02X?}\n them: {:02X?}",
-                cur_crc, device_crc, page_index, target_address, page.to_vec(), u8s
-            )
-        }
+        //     panic!(
+        //         "ours {:04X?} != {:04X?} them, failed 5 retries updating page {} target {:02X?}\n ours: {:02X?}\n them: {:02X?}",
+        //         cur_crc, device_crc, page_index, target_address, page.to_vec(), u8s
+        //     )
+        // }
     }
 }
 
