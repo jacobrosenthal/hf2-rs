@@ -11,9 +11,9 @@ pub fn info(d: &hidapi::HidDevice) -> Result<InfoResponse, Error> {
             status: CommandResponseStatus::Success,
             data,
             ..
-        }) => return (data.as_slice()).pread_with(0, LE),
-        Ok(_) => return Err(Error::CommandNotRecognized),
-        Err(e) => return Err(e),
+        }) => (data.as_slice()).pread_with(0, LE),
+        Ok(_) => Err(Error::CommandNotRecognized),
+        Err(e) => Err(e),
     }
 }
 
