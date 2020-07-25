@@ -249,19 +249,33 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
 
         xmodem.digest(&page);
 
-        if xmodem.get_crc() != device_checksums[page_index] {
+        let mut device_crc = device_checksums[page_index];
+        let cur_crc = xmodem.get_crc();
+        let mut retries = 5;
+        while cur_crc != device_crc && retries > 0 {
             log::debug!(
                 "ours {:04X?} != {:04X?} theirs, updating page {}",
-                xmodem.get_crc(),
-                device_checksums[page_index],
+                cur_crc,
+                device_crc,
                 page_index,
             );
 
             let target_address = address + bininfo.flash_page_size * page_index as u32;
             let _ = hf2::write_flash_page(&d, target_address, page.to_vec())
                 .expect("write_flash_page failed");
-        } else {
-            log::debug!("not updating page {}", page_index,);
+
+            device_crc = hf2::checksum_pages(&d, target_address, 1)
+                .expect("checksum_pages failed")
+                .checksums[0];
+
+            retries -= 1;
+        }
+
+        if retries == 0 {
+            panic!(
+                "ours {:04X?} != {:04X?} theirs, failed 5 retries updating page {}",
+                cur_crc, device_crc, page_index,
+            )
         }
     }
 }
