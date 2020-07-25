@@ -186,6 +186,7 @@ fn flash_elf(path: PathBuf, d: &HidDevice) {
         let flashed: u8 = binary
             .program_headers
             .iter()
+            .take(1)
             .filter(|ph| ph.p_type == PT_LOAD && ph.p_filesz > 0)
             .map(move |ph| {
                 log::debug!("{:?}", ph);
