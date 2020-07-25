@@ -188,13 +188,15 @@ fn flash_elf(path: PathBuf, d: &HidDevice) {
             .iter()
             .filter(|ph| ph.p_type == PT_LOAD && ph.p_filesz > 0)
             .map(move |ph| {
+                log::warn!("{:?}", ph);
+
                 log::debug!(
                     "Flashing {:?} bytes @{:02X?}",
                     ph.p_filesz as usize,
                     ph.p_offset as usize,
                 );
 
-                let data = &buffer[(ph.p_offset as usize)..][..ph.p_filesz as usize];
+                let data = &buffer[ph.p_offset as usize..][..ph.p_filesz as usize];
                 flash(data, ph.p_paddr as u32, &bininfo, &d);
                 1
             })
@@ -253,14 +255,16 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
         let cur_crc = xmodem.get_crc();
         let mut retries = 5;
         while cur_crc != device_crc && retries > 0 {
+            let target_address = address + bininfo.flash_page_size * page_index as u32;
+
             log::debug!(
-                "ours {:04X?} != {:04X?} theirs, updating page {}",
+                "ours {:04X?} != {:04X?} theirs, updating page {} target {}",
                 cur_crc,
                 device_crc,
                 page_index,
+                target_address
             );
 
-            let target_address = address + bininfo.flash_page_size * page_index as u32;
             let _ = hf2::write_flash_page(&d, target_address, page.to_vec())
                 .expect("write_flash_page failed");
 
@@ -272,9 +276,14 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
         }
 
         if retries == 0 {
+            let target_address = address + bininfo.flash_page_size * page_index as u32;
+
+            let resp = hf2::read_words(&d, target_address, bininfo.flash_page_size / 2)
+                .expect("read_words failed");
+
             panic!(
-                "ours {:04X?} != {:04X?} theirs, failed 5 retries updating page {}",
-                cur_crc, device_crc, page_index,
+                "ours {:04X?} != {:04X?} theirs, failed 5 retries updating page {}, ours {:04X?} thiers {:04X?}",
+                cur_crc, device_crc, page_index, page.to_vec(), resp.words
             )
         }
     }
