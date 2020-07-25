@@ -59,8 +59,23 @@ fn main() {
         Cmd::info => info(&d),
         Cmd::bininfo => bininfo(&d),
         Cmd::dmesg => dmesg(&d),
-        Cmd::flash { file, address } => flash(file, address, &d),
-        Cmd::verify { file, address } => verify(file, address, &d),
+        Cmd::flash { file, address } => {
+            let binary = get_binary(file);
+            let bininfo = hf2::bin_info(&d).expect("bin_info failed");
+            log::debug!("{:?}", bininfo);
+
+            flash_bin(&binary, address, &bininfo, &d);
+            println!("Success")
+
+        }
+        Cmd::verify { file, address } => {
+            let binary = get_binary(file);
+            let bininfo = hf2::bin_info(&d).expect("bin_info failed");
+            log::debug!("{:?}", bininfo);
+
+            verify(&binary, address, &bininfo, &d);
+            println!("Success")
+        }
     }
 }
 
@@ -84,18 +99,11 @@ fn dmesg(d: &HidDevice) {
     println!("{:?}", dmesg);
 }
 
-fn flash(file: PathBuf, address: u32, d: &HidDevice) {
-    let bininfo = hf2::bin_info(&d).expect("bin_info failed");
-    log::debug!("{:?}", bininfo);
+/// Flash, Verify and restart into app.
+fn flash_bin(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDevice) {
+    assert!(!binary.is_empty(), "Elf has nothing to flash?");
 
-    if bininfo.mode != hf2::BinInfoMode::Bootloader {
-        let _ = hf2::start_flash(&d).expect("start_flash failed");
-    }
-
-    //shouldnt there be a chunking interator for this?
-    let mut f = File::open(file).unwrap();
-    let mut binary = Vec::new();
-    f.read_to_end(&mut binary).unwrap();
+    let mut binary = binary.to_owned();
 
     //pad zeros to page size
     let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;
@@ -105,78 +113,32 @@ fn flash(file: PathBuf, address: u32, d: &HidDevice) {
         binary.len(),
         padded_size
     );
-
     for _i in 0..(padded_size as usize - binary.len()) {
         binary.push(0x0);
     }
-
-    // get checksums of existing pages
-    let top_address = address + padded_size as u32;
-    let max_pages = bininfo.max_message_size / 2 - 2;
-    let steps = max_pages * bininfo.flash_page_size;
-    let mut device_checksums = vec![];
-
-    for target_address in (address..top_address).step_by(steps as usize) {
-        let pages_left = (top_address - target_address) / bininfo.flash_page_size;
-
-        let num_pages = if pages_left < max_pages {
-            pages_left
-        } else {
-            max_pages
-        };
-        let chk =
-            hf2::checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
-        device_checksums.extend_from_slice(&chk.checksums[..]);
-    }
-    log::debug!("checksums received {:04X?}", device_checksums);
-
-    // only write changed contents
-    for (page_index, page) in binary.chunks(bininfo.flash_page_size as usize).enumerate() {
-        let mut xmodem = CRCu16::crc16xmodem();
-
-        xmodem.digest(&page);
-
-        if xmodem.get_crc() != device_checksums[page_index] {
-            log::debug!(
-                "ours {:04X?} != {:04X?} theirs, updating page {}",
-                xmodem.get_crc(),
-                device_checksums[page_index],
-                page_index,
-            );
-
-            let target_address = address + bininfo.flash_page_size * page_index as u32;
-            let _ = hf2::write_flash_page(&d, target_address, page.to_vec())
-                .expect("write_flash_page failed");
-        } else {
-            log::debug!("not updating page {}", page_index,);
-        }
-    }
-
-    println!("Success");
-    let _ = hf2::reset_into_app(&d).expect("reset_into_app failed");
-}
-
-fn verify(file: PathBuf, address: u32, d: &HidDevice) {
-    let bininfo = hf2::bin_info(&d).expect("bin_info failed");
 
     if bininfo.mode != hf2::BinInfoMode::Bootloader {
         let _ = hf2::start_flash(&d).expect("start_flash failed");
     }
+    flash(&binary, address, &bininfo, &d);
+    verify(&binary, address, &bininfo, &d);
+    let _ = hf2::reset_into_app(&d).expect("reset_into_app failed");
+}
 
-    //shouldnt there be a chunking interator for this?
-    let mut f = File::open(file).unwrap();
-    let mut binary = Vec::new();
-    f.read_to_end(&mut binary).unwrap();
+/// Flashes binary writing a single page at a time.
+fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDevice) {
+    for (page_index, page) in binary.chunks(bininfo.flash_page_size as usize).enumerate() {
+        let target_address = address + bininfo.flash_page_size * page_index as u32;
 
-    //pad zeros to page size
-    let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;
-    let padded_size = padded_num_pages * bininfo.flash_page_size;
-    for _i in 0..(padded_size as usize - binary.len()) {
-        binary.push(0x0);
+        let _ = hf2::write_flash_page(&d, target_address, page.to_vec())
+            .expect("write_flash_page failed");
     }
+}
 
+/// Verifys checksum of binary.
+fn verify(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDevice) {
     // get checksums of existing pages
-    let top_address = address + padded_size as u32;
+    let top_address = address + binary.len() as u32;
     let max_pages = bininfo.max_message_size / 2 - 2;
     let steps = max_pages * bininfo.flash_page_size;
     let mut device_checksums = vec![];
@@ -209,7 +171,14 @@ fn verify(file: PathBuf, address: u32, d: &HidDevice) {
         &binary_checksums[..binary_checksums.len()],
         &device_checksums[..binary_checksums.len()]
     );
-    println!("Success");
+}
+
+fn get_binary(file: PathBuf) -> Vec<u8> {
+    //shouldnt there be a chunking interator for this?
+    let mut f = File::open(file).unwrap();
+    let mut binary = Vec::new();
+    f.read_to_end(&mut binary).unwrap();
+    binary
 }
 
 fn parse_hex_32(input: &str) -> Result<u32, std::num::ParseIntError> {
@@ -219,6 +188,7 @@ fn parse_hex_32(input: &str) -> Result<u32, std::num::ParseIntError> {
         input.parse::<u32>()
     }
 }
+
 fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
     if input.starts_with("0x") {
         u16::from_str_radix(&input[2..], 16)
@@ -244,7 +214,7 @@ pub enum Cmd {
     ///Return internal log buffer if any. The result is a character array.
     dmesg,
 
-    /// flash
+    /// flash, note includes a verify and reset into app
     flash {
         #[structopt(short = "f", name = "file", long = "file")]
         file: PathBuf,
