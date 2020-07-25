@@ -245,7 +245,6 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
             hf2::checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
         device_checksums.extend_from_slice(&chk.checksums[..]);
     }
-    log::debug!("checksums received {:04X?}", device_checksums);
 
     let mut binary_checksums = vec![];
 
@@ -260,9 +259,9 @@ fn flash(binary: &[u8], address: u32, bininfo: &hf2::BinInfoResponse, d: &HidDev
     //only check as many as our binary has
     assert_eq!(
         &binary_checksums[..binary_checksums.len()],
-        &device_checksums[..binary_checksums.len()]
+        &device_checksums[..binary_checksums.len()],
+        "flashing failed, some checksums don't match"
     );
-    println!("Success");
 }
 
 fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
