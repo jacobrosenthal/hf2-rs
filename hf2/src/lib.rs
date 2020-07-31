@@ -59,3 +59,6 @@ pub trait ReadWrite {
 
 #[cfg(feature = "hidapi")]
 mod hidapi_trait;
+
+#[cfg(feature = "utils")]
+pub mod utils;
