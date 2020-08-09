@@ -56,8 +56,11 @@ pub fn flash_bin(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &Hid
 
     let mut binary = binary.to_owned();
 
-    //pad zeros to page size
-    let padded_num_pages = (binary.len() as f64 / f64::from(bininfo.flash_page_size)).ceil() as u32;
+    // pad zeros to page size
+    // add divisor-1 to dividend to round up
+    let padded_num_pages =
+        (binary.len() as u32 + (bininfo.flash_page_size - 1)) / bininfo.flash_page_size;
+
     let padded_size = padded_num_pages * bininfo.flash_page_size;
     log::debug!(
         "binary is {} bytes, padding to {} bytes",
@@ -86,24 +89,45 @@ fn flash(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) 
     }
 }
 
+pub fn verify_bin(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) {
+    let mut binary = binary.to_owned();
+
+    // pad zeros to page size
+    // add divisor-1 to dividend to round up
+    let padded_num_pages =
+        (binary.len() as u32 + (bininfo.flash_page_size - 1)) / bininfo.flash_page_size;
+
+    let padded_size = padded_num_pages * bininfo.flash_page_size;
+
+    for _i in 0..(padded_size as usize - binary.len()) {
+        binary.push(0x0);
+    }
+
+    verify(&binary, address, &bininfo, &d);
+}
 /// Verifys checksum of binary.
-pub fn verify(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) {
+fn verify(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) {
     // get checksums of existing pages
+
     let top_address = address + binary.len() as u32;
+
     let max_pages = bininfo.max_message_size / 2 - 2;
     let steps = max_pages * bininfo.flash_page_size;
     let mut device_checksums = vec![];
 
     for target_address in (address..top_address).step_by(steps as usize) {
-        let pages_left = (top_address - target_address) / bininfo.flash_page_size;
+        // add divisor-1 to dividend to round up
+        let pages_left = (top_address - target_address + (bininfo.flash_page_size - 1))
+            / bininfo.flash_page_size;
 
         let num_pages = if pages_left < max_pages {
             pages_left
         } else {
             max_pages
         };
+
         let chk = checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
-        device_checksums.extend_from_slice(&chk.checksums[..]);
+        device_checksums.extend_from_slice(&chk.checksums);
     }
 
     let mut binary_checksums = vec![];
@@ -117,10 +141,7 @@ pub fn verify(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDev
     }
 
     //only check as many as our binary has
-    assert_eq!(
-        &binary_checksums[..binary_checksums.len()],
-        &device_checksums[..binary_checksums.len()]
-    );
+    assert_eq!(binary_checksums, device_checksums);
 }
 
 pub fn vendor_map() -> std::collections::HashMap<u16, Vec<u16>> {

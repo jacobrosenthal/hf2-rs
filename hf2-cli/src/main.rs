@@ -1,4 +1,4 @@
-use hf2::utils::{flash_bin, vendor_map, verify};
+use hf2::utils::{flash_bin, vendor_map, verify_bin};
 use hidapi::{HidApi, HidDevice};
 use std::fs::File;
 use std::io::Read;
@@ -60,7 +60,7 @@ fn main() {
             let bininfo = hf2::bin_info(&d).expect("bin_info failed");
             log::debug!("{:?}", bininfo);
 
-            verify(&binary, address, &bininfo, &d);
+            verify_bin(&binary, address, &bininfo, &d);
             println!("Success")
         }
     }
