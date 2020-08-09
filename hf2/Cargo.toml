@@ -10,9 +10,13 @@ license = "MIT/Apache-2.0"
 readme = "readme.md"
 
 [features]
-default = ["hidapi"]
+default = ["hidapi", "utils"]
+utils = ["maplit", "goblin", "crc-any"]
 
 [dependencies]
 scroll = { version = "0.10.0" }
 log = "0.4.6"
 hidapi = { version = "1.2.1", optional = true }
+maplit = { version = "1.0.2", optional = true }
+goblin = { version = "0.2.3", optional = true }
+crc-any = { version = "2.2.3", default-features = false, optional = true }
