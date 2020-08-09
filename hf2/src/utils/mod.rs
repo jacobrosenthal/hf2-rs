@@ -15,37 +15,30 @@ pub fn elf_to_bin(path: PathBuf) -> (Vec<u8>, u32) {
 
     let binary = goblin::elf::Elf::parse(&buffer.as_slice()).expect("Couldn't parse elf");
 
-    // we need to fill any noncontigous section space with zeros to send over to uf2 bootloader in one batch (for some reason)
-    // todo this is a mess
-    let (data, _, start_address) = binary
+    let mut start_address: u64 = 0;
+    let mut last_address: u64 = 0;
+
+    let mut data = vec![];
+    for (i, ph) in binary
         .program_headers
         .iter()
         .filter(|ph| ph.p_type == PT_LOAD && ph.p_filesz > 0)
-        .fold(
-            (vec![], 0x0, 0x0),
-            move |(mut data, last_address, start_address), ph| {
-                log::debug!("{:?}", ph);
+        .enumerate()
+    {
+        data.extend_from_slice(&buffer[ph.p_offset as usize..][..ph.p_filesz as usize]);
 
-                let current_address = ph.p_filesz + ph.p_paddr;
+        if i == 0 {
+            start_address = ph.p_paddr;
+        }
+        //if any of the rest of the sections are non contiguous, fill zeros
+        else {
+            for _ in 0..(ph.p_paddr - last_address) {
+                data.push(0x0);
+            }
+        }
 
-                //first time through we dont want any of the padding zeros and we want to set the starting address
-                if data.is_empty() {
-                    data.extend_from_slice(&buffer[ph.p_offset as usize..][..ph.p_filesz as usize]);
-
-                    (data, current_address, ph.p_paddr)
-                }
-                //other times through pad any space between sections and maintain the starting address
-                else {
-                    for _ in 0..(current_address - last_address) {
-                        data.push(0x0);
-                    }
-
-                    data.extend_from_slice(&buffer[ph.p_offset as usize..][..ph.p_filesz as usize]);
-
-                    (data, current_address, start_address)
-                }
-            },
-        );
+        last_address = start_address + ph.p_filesz;
+    }
 
     (data, start_address as u32)
 }
@@ -105,6 +98,7 @@ pub fn verify_bin(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &Hi
 
     verify(&binary, address, &bininfo, &d);
 }
+
 /// Verifys checksum of binary.
 fn verify(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) {
     // get checksums of existing pages
