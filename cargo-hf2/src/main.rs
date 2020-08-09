@@ -107,7 +107,7 @@ fn main() {
 
     println!("    {} {:?}", "Flashing".green().bold(), path);
 
-    let (binary, address) = elf_to_bin(path);
+    let (binary, address) = elf_to_bin(path).unwrap();
 
     // Start timer.
     let instant = Instant::now();
@@ -115,7 +115,7 @@ fn main() {
     let bininfo = hf2::bin_info(&d).expect("bin_info failed");
     log::debug!("{:?}", bininfo);
 
-    flash_bin(&binary, address, &bininfo, &d);
+    flash_bin(&binary, address, &bininfo, &d).unwrap();
 
     // Stop timer.
     let elapsed = instant.elapsed();

@@ -1,5 +1,6 @@
 use super::{
     checksum_pages, reset_into_app, start_flash, write_flash_page, BinInfoMode, BinInfoResponse,
+    Error,
 };
 use crc_any::CRCu16;
 use goblin::elf::program_header::*;
@@ -7,13 +8,32 @@ use hidapi::HidDevice;
 use std::path::PathBuf;
 use std::{fs::File, io::Read};
 
-/// Returns a contiguous bin with 0s between non-contiguous sections and starting address from an elf.
-pub fn elf_to_bin(path: PathBuf) -> (Vec<u8>, u32) {
-    let mut file = File::open(path).unwrap();
-    let mut buffer = vec![];
-    file.read_to_end(&mut buffer).unwrap();
+#[derive(Debug)]
+pub enum UtilError {
+    File,
+    InvalidBinary,
+    Elf,
+    Internal,
+    Communication,
+    ContentsDifferent,
+}
 
-    let binary = goblin::elf::Elf::parse(&buffer.as_slice()).expect("Couldn't parse elf");
+impl From<Error> for UtilError {
+    fn from(err: Error) -> UtilError {
+        match err {
+            Error::Parse | Error::Transmission => UtilError::Communication,
+            _ => UtilError::Internal,
+        }
+    }
+}
+
+/// Returns a contiguous bin with 0s between non-contiguous sections and starting address from an elf.
+pub fn elf_to_bin(path: PathBuf) -> Result<(Vec<u8>, u32), UtilError> {
+    let mut file = File::open(path).map_err(|_| UtilError::File)?;
+    let mut buffer = vec![];
+    file.read_to_end(&mut buffer).map_err(|_| UtilError::File)?;
+
+    let binary = goblin::elf::Elf::parse(&buffer.as_slice()).map_err(|_| UtilError::Elf)?;
 
     let mut start_address: u64 = 0;
     let mut last_address: u64 = 0;
@@ -40,12 +60,19 @@ pub fn elf_to_bin(path: PathBuf) -> (Vec<u8>, u32) {
         last_address = start_address + ph.p_filesz;
     }
 
-    (data, start_address as u32)
+    Ok((data, start_address as u32))
 }
 
 /// Flash, Verify and restart into app.
-pub fn flash_bin(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) {
-    assert!(!binary.is_empty(), "Elf has nothing to flash?");
+pub fn flash_bin(
+    binary: &[u8],
+    address: u32,
+    bininfo: &BinInfoResponse,
+    d: &HidDevice,
+) -> Result<(), UtilError> {
+    if binary.is_empty() {
+        return Err(UtilError::InvalidBinary);
+    }
 
     let mut binary = binary.to_owned();
 
@@ -65,24 +92,40 @@ pub fn flash_bin(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &Hid
     }
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = start_flash(&d).expect("start_flash failed");
+        let _ = start_flash(&d).map_err(UtilError::from)?;
     }
-    flash(&binary, address, &bininfo, &d);
-    verify(&binary, address, &bininfo, &d);
-    let _ = reset_into_app(&d).expect("reset_into_app failed");
+    flash(&binary, address, &bininfo, &d)?;
+
+    match verify(&binary, address, &bininfo, &d) {
+        Ok(false) => return Err(UtilError::ContentsDifferent),
+        Err(e) => return Err(UtilError::from(e)),
+        Ok(true) => (),
+    };
+
+    reset_into_app(&d).map_err(UtilError::from)
 }
 
 /// Flashes binary writing a single page at a time.
-fn flash(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) {
+fn flash(
+    binary: &[u8],
+    address: u32,
+    bininfo: &BinInfoResponse,
+    d: &HidDevice,
+) -> Result<(), UtilError> {
     for (page_index, page) in binary.chunks(bininfo.flash_page_size as usize).enumerate() {
         let target_address = address + bininfo.flash_page_size * page_index as u32;
 
-        let _ =
-            write_flash_page(&d, target_address, page.to_vec()).expect("write_flash_page failed");
+        let _ = write_flash_page(&d, target_address, page.to_vec()).map_err(UtilError::from)?;
     }
+    Ok(())
 }
 
-pub fn verify_bin(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) {
+pub fn verify_bin(
+    binary: &[u8],
+    address: u32,
+    bininfo: &BinInfoResponse,
+    d: &HidDevice,
+) -> Result<(), UtilError> {
     let mut binary = binary.to_owned();
 
     // pad zeros to page size
@@ -96,11 +139,20 @@ pub fn verify_bin(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &Hi
         binary.push(0x0);
     }
 
-    verify(&binary, address, &bininfo, &d);
+    match verify(&binary, address, &bininfo, &d) {
+        Ok(false) => Err(UtilError::ContentsDifferent),
+        Err(e) => Err(e),
+        Ok(true) => Ok(()),
+    }
 }
 
 /// Verifys checksum of binary.
-fn verify(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice) {
+fn verify(
+    binary: &[u8],
+    address: u32,
+    bininfo: &BinInfoResponse,
+    d: &HidDevice,
+) -> Result<bool, UtilError> {
     // get checksums of existing pages
 
     let top_address = address + binary.len() as u32;
@@ -120,7 +172,7 @@ fn verify(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice)
             max_pages
         };
 
-        let chk = checksum_pages(&d, target_address, num_pages).expect("checksum_pages failed");
+        let chk = checksum_pages(&d, target_address, num_pages).map_err(UtilError::from)?;
         device_checksums.extend_from_slice(&chk.checksums);
     }
 
@@ -134,8 +186,7 @@ fn verify(binary: &[u8], address: u32, bininfo: &BinInfoResponse, d: &HidDevice)
         binary_checksums.push(xmodem.get_crc());
     }
 
-    //only check as many as our binary has
-    assert_eq!(binary_checksums, device_checksums);
+    Ok(binary_checksums.eq(&device_checksums))
 }
 
 pub fn vendor_map() -> std::collections::HashMap<u16, Vec<u16>> {

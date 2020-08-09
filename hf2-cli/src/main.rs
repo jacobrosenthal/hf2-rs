@@ -52,7 +52,7 @@ fn main() {
             let bininfo = hf2::bin_info(&d).expect("bin_info failed");
             log::debug!("{:?}", bininfo);
 
-            flash_bin(&binary, address, &bininfo, &d);
+            flash_bin(&binary, address, &bininfo, &d).unwrap();
             println!("Success")
         }
         Cmd::verify { file, address } => {
@@ -60,7 +60,7 @@ fn main() {
             let bininfo = hf2::bin_info(&d).expect("bin_info failed");
             log::debug!("{:?}", bininfo);
 
-            verify_bin(&binary, address, &bininfo, &d);
+            verify_bin(&binary, address, &bininfo, &d).unwrap();
             println!("Success")
         }
     }
