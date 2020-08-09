@@ -1,6 +1,6 @@
 [package]
 name = "hf2-cli"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Jacob Rosenthal <@jacobrosenthal>"]
 edition = "2018"
 description = "CLI for Microsoft HID Flashing Library for UF2 Bootloaders"
@@ -12,7 +12,7 @@ readme = "readme.md"
 
 [dependencies]
 structopt = "0.3.2"
-hf2 = { version = "^0.2.1", path = "../hf2" }
+hf2 = { version = "^0.2.2", path = "../hf2" }
 hidapi = "1.2.1"
 pretty_env_logger = "0.4.0"
 maplit = "1.0.2"
