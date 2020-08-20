@@ -41,7 +41,23 @@ On mac, as of Catalina you will get a permissions prompt and must follow directi
 
 `cargo install hf2-cli`
 
-## use
+## `hf2` flashing elf files, or as a cargo runner
+
+Another use is as a cargo runner. In your .cargo/config set hf2 as your runner
+
+```toml
+[target.thumbv7em-none-eabihf]
+runner = "hf2"
+
+```
+
+Then either:
+
+* `cargo run --example blinky_basic`
+* Or use your ide's "run" button and it will build and upload
+* Manually call hf2 and provide a path to an elf file `hf2 target/thumbv7em-none-eabihf/debug/examples/blinky_basic`
+
+## hf2 standalone to flash binaries
 
 ```rust
 $ hf2
@@ -76,11 +92,9 @@ It will attempt to autodetect a device by sending the bininfo command any whitel
 hf2 deals in binaries, not elf files so you're going to have to get a bin with something like `cargo objcopy --example ferris_img --release -- -O binary ferris_img.bin`
 Then you need your bootloaders address offset.
 
-
 ```bash
 hf2 -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
 ```
-
 ## troubleshooting
 
 If it cant find a device, make sure your device is in a bootloader mode ready to receive firmware.

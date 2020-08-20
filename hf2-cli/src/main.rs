@@ -1,4 +1,4 @@
-use hf2::utils::{flash_bin, vendor_map, verify_bin};
+use hf2::utils::{elf_to_bin, flash_bin, vendor_map, verify_bin};
 use hidapi::{HidApi, HidDevice};
 use std::fs::File;
 use std::io::Read;
@@ -41,27 +41,36 @@ fn main() {
         d.get_product_string()
     );
 
-    match args.cmd {
-        Cmd::resetIntoApp => hf2::reset_into_app(&d).unwrap(),
-        Cmd::resetIntoBootloader => hf2::reset_into_bootloader(&d).unwrap(),
-        Cmd::info => info(&d),
-        Cmd::bininfo => bininfo(&d),
-        Cmd::dmesg => dmesg(&d),
-        Cmd::flash { file, address } => {
-            let binary = get_binary(file);
-            let bininfo = hf2::bin_info(&d).expect("bin_info failed");
-            log::debug!("{:?}", bininfo);
+    if let Some(path) = args.elf {
+        let (binary, address) = elf_to_bin(path).unwrap();
 
-            flash_bin(&binary, address, &bininfo, &d).unwrap();
-            println!("Success")
-        }
-        Cmd::verify { file, address } => {
-            let binary = get_binary(file);
-            let bininfo = hf2::bin_info(&d).expect("bin_info failed");
-            log::debug!("{:?}", bininfo);
+        let bininfo = hf2::bin_info(&d).expect("bin_info failed");
+        log::debug!("{:?}", bininfo);
 
-            verify_bin(&binary, address, &bininfo, &d).unwrap();
-            println!("Success")
+        flash_bin(&binary, address, &bininfo, &d).unwrap();
+    } else {
+        match args.cmd.unwrap() {
+            Cmd::resetIntoApp => hf2::reset_into_app(&d).unwrap(),
+            Cmd::resetIntoBootloader => hf2::reset_into_bootloader(&d).unwrap(),
+            Cmd::info => info(&d),
+            Cmd::bininfo => bininfo(&d),
+            Cmd::dmesg => dmesg(&d),
+            Cmd::flash { file, address } => {
+                let binary = get_binary(file);
+                let bininfo = hf2::bin_info(&d).expect("bin_info failed");
+                log::debug!("{:?}", bininfo);
+
+                flash_bin(&binary, address, &bininfo, &d).unwrap();
+                println!("Success")
+            }
+            Cmd::verify { file, address } => {
+                let binary = get_binary(file);
+                let bininfo = hf2::bin_info(&d).expect("bin_info failed");
+                log::debug!("{:?}", bininfo);
+
+                verify_bin(&binary, address, &bininfo, &d).unwrap();
+                println!("Success")
+            }
         }
     }
 }
@@ -148,10 +157,13 @@ pub enum Cmd {
 #[structopt(name = "hf2", about = "Microsoft HID Flashing Format")]
 struct Opt {
     #[structopt(subcommand)]
-    cmd: Cmd,
+    cmd: Option<Cmd>,
 
     #[structopt(short = "p", name = "pid", long = "pid", parse(try_from_str = parse_hex_16))]
     pid: Option<u16>,
     #[structopt(short = "v", name = "vid", long = "vid", parse(try_from_str = parse_hex_16))]
     vid: Option<u16>,
+
+    #[structopt(name = "ELF", parse(from_os_str), required_unless("cmd"))]
+    elf: Option<PathBuf>,
 }
