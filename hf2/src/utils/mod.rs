@@ -52,9 +52,8 @@ pub fn elf_to_bin(path: PathBuf) -> Result<(Vec<u8>, u32), UtilError> {
         }
         //if any of the rest of the sections are non contiguous, fill zeros
         else {
-            for _ in 0..(ph.p_paddr - last_address) {
-                data.push(0x0);
-            }
+            let difference = (ph.p_paddr - last_address) as usize;
+            data.resize(data.len() + difference, 0x0);
         }
 
         last_address = start_address + ph.p_filesz;
@@ -98,7 +97,7 @@ pub fn flash_bin(
 
     match verify(&binary, address, &bininfo, &d) {
         Ok(false) => return Err(UtilError::ContentsDifferent),
-        Err(e) => return Err(UtilError::from(e)),
+        Err(e) => return Err(e),
         Ok(true) => (),
     };
 
