@@ -1,4 +1,4 @@
-use hf2::utils::{flash_bin, vendor_map, verify_bin};
+use hf2::utils::{elf_to_bin, flash_bin, vendor_map, verify_bin};
 use hidapi::{HidApi, HidDevice};
 use std::fs::File;
 use std::io::Read;
@@ -62,6 +62,14 @@ fn main() {
 
             verify_bin(&binary, address, &bininfo, &d).unwrap();
             println!("Success")
+        }
+        Cmd::elf { path } => {
+            let (binary, address) = elf_to_bin(path).unwrap();
+
+            let bininfo = hf2::bin_info(&d).expect("bin_info failed");
+            log::debug!("{:?}", bininfo);
+
+            flash_bin(&binary, address, &bininfo, &d).unwrap();
         }
     }
 }
@@ -127,7 +135,7 @@ pub enum Cmd {
     ///Return internal log buffer if any. The result is a character array.
     dmesg,
 
-    /// flash, note includes a verify and reset into app
+    /// flash binary, note includes a verify and reset into app
     flash {
         #[structopt(short = "f", name = "file", long = "file")]
         file: PathBuf,
@@ -135,12 +143,18 @@ pub enum Cmd {
         address: u32,
     },
 
-    /// verify
+    /// verify binary
     verify {
         #[structopt(short = "f", name = "file", long = "file")]
         file: PathBuf,
         #[structopt(short = "a", name = "address", long = "address", parse(try_from_str = parse_hex_32))]
         address: u32,
+    },
+
+    /// flash elf, note includes a verify and reset into app
+    elf {
+        #[structopt(parse(from_os_str))]
+        path: PathBuf,
     },
 }
 
