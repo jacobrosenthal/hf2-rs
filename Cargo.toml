@@ -1,6 +1,2 @@
 [workspace]
-members = [
-    "cargo-hf2",
-    "hf2-cli",
-    "hf2",
-]
+members = ["hf2-cli", "hf2"]

@@ -18,7 +18,13 @@ pretty_env_logger = "0.4.0"
 maplit = "1.0.2"
 crc-any = { version = "2.2.3", default-features = false }
 log = "0.4.6"
+colored = "2.0.0"
+cargo-project = "0.2.4"
 
 [[bin]]
 name = "hf2"
 path = "src/main.rs"
+
+[[bin]]
+name = "cargo-hf2"
+path = "src/cargo-hf2.rs"

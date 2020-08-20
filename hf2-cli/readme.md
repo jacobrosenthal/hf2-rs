@@ -2,7 +2,14 @@
 
 Command line implementation of the [hf2 flashing over hid protocol](https://github.com/jacobrosenthal/hf2-rs/tree/master/hf2) commonly used in by [Microsoft MakeCode](https://www.microsoft.com/en-us/makecode) and [Adafruit](https://www.adafruit.com) hardware.
 
-Unless you know otherwise, you probably want [cargo-hf2](https://github.com/jacobrosenthal/hf2-rs)
+## install
+
+`cargo install hf2-cli`
+
+Installs two binaries described below
+
+* `cargo-hf2`
+* `hf2`
 
 ## prerequisites
 
@@ -36,10 +43,6 @@ sudo udevadm trigger
 ### mac
 
 On mac, as of Catalina you will get a permissions prompt and must follow directions to allow "Input Monitoring" for the Terminal application.
-
-## install
-
-`cargo install hf2-cli`
 
 ## `hf2` flashing elf files, or as a cargo runner
 
@@ -95,6 +98,46 @@ Then you need your bootloaders address offset.
 ```bash
 hf2 -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
 ```
+
+## `cargo hf2` to replace `cargo build`
+
+From a firmware directory you can run all the usual cargo build commands, --example and --release, with build replaced by hf2. Assuming the builds succeeds we open the usb device using a hardcoded whitelist and copy the file over.
+
+```bash
+$ cargo hf2 --example ferris_img --release --pid 0x003d --vid 0x239a
+    Finished release [optimized + debuginfo] target(s) in 0.28s
+    Flashing "./target/thumbv7em-none-eabihf/release/examples/ferris_img"
+Success
+    Finished in 0.037s
+```
+
+Optionally you can leave off pid and vid and it'll attempt to query any hid devices with the bininfo packet and write to the first one that responds
+
+```bash
+$ cargo hf2 --example ferris_img --release
+    Finished release [optimized + debuginfo] target(s) in 0.24s
+no vid/pid provided..
+trying "" "Apple Internal Keyboard / Trackpad"
+trying "Adafruit Industries" "PyGamer"
+    Flashing "./target/thumbv7em-none-eabihf/release/examples/ferris_img"
+Success
+    Finished in 0.034s
+```
+
+If it cant find a device, make sure your device is in a bootloader mode. On the PyGamer, 2 button presses enables a blue and green screen that says PyGamer.
+
+```bash
+$ cargo hf2 --example ferris_img --release
+    Finished release [optimized + debuginfo] target(s) in 0.20s
+no vid/pid provided..
+trying "" "Apple Internal Keyboard / Trackpad"
+trying "" "Keyboard Backlight"
+trying "" "Apple Internal Keyboard / Trackpad"
+trying "" "Apple Internal Keyboard / Trackpad"
+thread 'main' panicked at 'Are you sure device is plugged in and in bootloader mode?', src/libcore/option.rs:1166:5
+
+```
+
 ## troubleshooting
 
 If it cant find a device, make sure your device is in a bootloader mode ready to receive firmware.
@@ -109,5 +152,5 @@ On the PyGamer, 2 button presses enables a blue and green screen that says PyGam
 If you find another error, be sure to run with debug to see where in the process it failed and include those logs when reporting
 
 ```bash
-RUST_LOG=debug hf2 -v 0x239a -p 0x003d flash -f neopixel_rainbow.bin -a 0x4000
+RUST_LOG=debug cargo hf2 --vid 0x239a --pid 0x003d
 ```
