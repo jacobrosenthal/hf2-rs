@@ -1,6 +1,6 @@
 [package]
 name = "cargo-hf2"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["Jacob Rosenthal <@jacobrosenthal>"]
 edition = "2018"
 description = "Cargo Subcommand for Microsoft HID Flashing Library for UF2 Bootloaders"
@@ -13,7 +13,7 @@ readme = "readme.md"
 [dependencies]
 structopt = "0.3.2"
 colored = "2.0.0"
-hf2 = { version = "^0.2.2", path = "../hf2" }
+hf2 = { version = "^0.3.0", path = "../hf2" }
 hidapi = "1.2.1"
 cargo-project = "0.2.4"
 pretty_env_logger = "0.3.0"
