@@ -52,4 +52,4 @@ jobs:
             toolchain: nightly
             components: rustfmt
             override: true
-      - run: rustfmt --check --edition 2018 ./src/* ./examples/*
+      - run: rustfmt --check --edition 2018 ./*
