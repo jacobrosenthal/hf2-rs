@@ -1,0 +1,56 @@
+name: Rust
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: install libusb
+      run: sudo apt-get install libusb-1.0-0-dev
+    - uses: actions/checkout@v2
+    - name: Build - All Features
+      run: cargo build --verbose --all-features
+    - name: Build - Default
+      run: cargo build --verbose
+    - name: Build - Check Examples & Tests
+      run: cargo test --all-features
+
+  clippy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: install libusb
+      run: sudo apt-get install libusb-1.0-0-dev
+    - uses: actions/checkout@v1
+    - uses: actions-rs/toolchain@v1
+      with:
+          toolchain: stable
+          components: clippy
+          override: true
+    - uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: install libusb
+        run: sudo apt-get install libusb-1.0-0-dev
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            components: rustfmt
+            override: true
+      # rustfmt formats the project as a whole, so including only the entry points of each crate is sufficient
+      - run: rustfmt --check --edition 2018 ./cargo-hf2/src/main.rs ./hf2/src/lib.rs ./hf2-cli/src/main.rs
