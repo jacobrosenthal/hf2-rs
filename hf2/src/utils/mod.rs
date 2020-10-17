@@ -42,7 +42,12 @@ pub fn elf_to_bin(path: PathBuf) -> Result<(Vec<u8>, u32), UtilError> {
     for (i, ph) in binary
         .program_headers
         .iter()
-        .filter(|ph| ph.p_type == PT_LOAD && ph.p_filesz > 0)
+        .filter(|ph| {
+            ph.p_type == PT_LOAD
+                && ph.p_filesz > 0
+                && ph.p_offset >= binary.header.e_ehsize as u64
+                && ph.is_read()
+        })
         .enumerate()
     {
         data.extend_from_slice(&buffer[ph.p_offset as usize..][..ph.p_filesz as usize]);
@@ -199,5 +204,36 @@ pub fn vendor_map() -> std::collections::HashMap<u16, Vec<u16>> {
         0x2886 => vec![0x000D, 0x002F],
         0x1B4F => vec![0x0D23, 0x0D22],
         0x1209 => vec![0x4D44, 0x2017],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn elf_rustc_1_44_0() {
+        let (_, start_addr) = super::elf_to_bin(
+            [
+                env!("CARGO_MANIFEST_DIR"),
+                "src/utils/testdata/blinky_1.44.0",
+            ]
+            .iter()
+            .collect(),
+        )
+        .unwrap();
+        assert_eq!(start_addr, 0x4000);
+    }
+
+    #[test]
+    fn elf_rustc_1_47_0() {
+        let (_, start_addr) = super::elf_to_bin(
+            [
+                env!("CARGO_MANIFEST_DIR"),
+                "src/utils/testdata/blinky_1.47.0",
+            ]
+            .iter()
+            .collect(),
+        )
+        .unwrap();
+        assert_eq!(start_addr, 0x4000);
     }
 }
