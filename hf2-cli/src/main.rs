@@ -75,12 +75,12 @@ fn main() {
 }
 
 fn info(d: &HidDevice) {
-    let info = hf2::info(&d).expect("info failed");
+    let info = hf2::info(d).expect("info failed");
     println!("{:?}", info);
 }
 
 fn bininfo(d: &HidDevice) {
-    let bininfo = hf2::bin_info(&d).expect("bin_info failed");
+    let bininfo = hf2::bin_info(d).expect("bin_info failed");
     println!(
         "{:?} {:?}kb",
         bininfo,
@@ -90,7 +90,7 @@ fn bininfo(d: &HidDevice) {
 
 fn dmesg(d: &HidDevice) {
     // todo, test. not supported on my board
-    let dmesg = hf2::dmesg(&d).expect("dmesg failed");
+    let dmesg = hf2::dmesg(d).expect("dmesg failed");
     println!("{:?}", dmesg);
 }
 
