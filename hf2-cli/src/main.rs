@@ -103,16 +103,16 @@ fn get_binary(file: PathBuf) -> Vec<u8> {
 }
 
 fn parse_hex_32(input: &str) -> Result<u32, std::num::ParseIntError> {
-    if input.starts_with("0x") {
-        u32::from_str_radix(&input[2..], 16)
+    if let Some(stripped) = input.strip_prefix("0x") {
+        u32::from_str_radix(stripped, 16)
     } else {
         input.parse::<u32>()
     }
 }
 
 fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
-    if input.starts_with("0x") {
-        u16::from_str_radix(&input[2..], 16)
+    if let Some(stripped) = input.strip_prefix("0x") {
+        u16::from_str_radix(stripped, 16)
     } else {
         input.parse::<u16>()
     }
