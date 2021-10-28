@@ -240,4 +240,19 @@ mod tests {
         .unwrap();
         assert_eq!(start_addr, 0x4000);
     }
+
+    #[test]
+    fn elf_sections() {
+        let (data, start_addr) = super::elf_to_bin(
+            [env!("CARGO_MANIFEST_DIR"), "src/utils/testdata/sections"]
+                .iter()
+                .collect(),
+        )
+        .unwrap();
+        println!("{:?}", data);
+        assert_eq!(start_addr, 0);
+        assert_eq!(data[0], 1);
+        assert_eq!(data[12], 2);
+        assert_eq!(data[20], 3);
+    }
 }
