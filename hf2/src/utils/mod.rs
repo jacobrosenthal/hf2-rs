@@ -50,18 +50,18 @@ pub fn elf_to_bin(path: PathBuf) -> Result<(Vec<u8>, u32), UtilError> {
         })
         .enumerate()
     {
-        // if there's a gap between this section and the previous one, fill it
-        // with zeros
-        if i > 0 {
+        // first time through grab the starting physical address
+        if i == 0 {
+            start_address = ph.p_paddr;
+        }
+        // on subsequent passes, if there's a gap between this section and the
+        // previous one, fill it with zeros
+        else {
             let difference = (ph.p_paddr - last_address) as usize;
             data.resize(data.len() + difference, 0x0);
         }
 
         data.extend_from_slice(&buffer[ph.p_offset as usize..][..ph.p_filesz as usize]);
-
-        if i == 0 {
-            start_address = ph.p_paddr;
-        }
 
         last_address = ph.p_paddr + ph.p_filesz;
     }
