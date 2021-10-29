@@ -50,18 +50,20 @@ pub fn elf_to_bin(path: PathBuf) -> Result<(Vec<u8>, u32), UtilError> {
         })
         .enumerate()
     {
-        data.extend_from_slice(&buffer[ph.p_offset as usize..][..ph.p_filesz as usize]);
-
+        // first time through grab the starting physical address
         if i == 0 {
             start_address = ph.p_paddr;
         }
-        //if any of the rest of the sections are non contiguous, fill zeros
+        // on subsequent passes, if there's a gap between this section and the
+        // previous one, fill it with zeros
         else {
             let difference = (ph.p_paddr - last_address) as usize;
             data.resize(data.len() + difference, 0x0);
         }
 
-        last_address = start_address + ph.p_filesz;
+        data.extend_from_slice(&buffer[ph.p_offset as usize..][..ph.p_filesz as usize]);
+
+        last_address = ph.p_paddr + ph.p_filesz;
     }
 
     Ok((data, start_address as u32))
@@ -237,5 +239,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(start_addr, 0x4000);
+    }
+
+    #[test]
+    fn elf_sections() {
+        let (data, start_addr) = super::elf_to_bin(
+            [env!("CARGO_MANIFEST_DIR"), "src/utils/testdata/sections"]
+                .iter()
+                .collect(),
+        )
+        .unwrap();
+        println!("{:?}", data);
+        assert_eq!(start_addr, 0);
+        assert_eq!(data[0], 1);
+        assert_eq!(data[12], 2);
+        assert_eq!(data[20], 3);
     }
 }
