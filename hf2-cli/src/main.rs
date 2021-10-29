@@ -75,12 +75,12 @@ fn main() {
 }
 
 fn info(d: &HidDevice) {
-    let info = hf2::info(&d).expect("info failed");
+    let info = hf2::info(d).expect("info failed");
     println!("{:?}", info);
 }
 
 fn bininfo(d: &HidDevice) {
-    let bininfo = hf2::bin_info(&d).expect("bin_info failed");
+    let bininfo = hf2::bin_info(d).expect("bin_info failed");
     println!(
         "{:?} {:?}kb",
         bininfo,
@@ -90,7 +90,7 @@ fn bininfo(d: &HidDevice) {
 
 fn dmesg(d: &HidDevice) {
     // todo, test. not supported on my board
-    let dmesg = hf2::dmesg(&d).expect("dmesg failed");
+    let dmesg = hf2::dmesg(d).expect("dmesg failed");
     println!("{:?}", dmesg);
 }
 
@@ -103,16 +103,16 @@ fn get_binary(file: PathBuf) -> Vec<u8> {
 }
 
 fn parse_hex_32(input: &str) -> Result<u32, std::num::ParseIntError> {
-    if input.starts_with("0x") {
-        u32::from_str_radix(&input[2..], 16)
+    if let Some(stripped) = input.strip_prefix("0x") {
+        u32::from_str_radix(stripped, 16)
     } else {
         input.parse::<u32>()
     }
 }
 
 fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
-    if input.starts_with("0x") {
-        u16::from_str_radix(&input[2..], 16)
+    if let Some(stripped) = input.strip_prefix("0x") {
+        u16::from_str_radix(stripped, 16)
     } else {
         input.parse::<u16>()
     }

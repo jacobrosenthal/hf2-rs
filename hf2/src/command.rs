@@ -196,7 +196,7 @@ pub(crate) fn rx(d: &impl ReadWrite) -> Result<CommandResponse, Error> {
     let mut retries = 5;
 
     // keep reading until Final packet
-    'outer: while {
+    'outer: loop {
         let count = d.hf2_read(buffer)?;
 
         log::debug!("rx count: {:?}", count);
@@ -231,9 +231,10 @@ pub(crate) fn rx(d: &impl ReadWrite) -> Result<CommandResponse, Error> {
         //skip the header byte and strip excess bytes remote is allowed to send
         bitsnbytes.extend_from_slice(&buffer[1..(len + 1)]);
 
-        //funky do while notation
-        ptype == PacketType::Inner
-    } {}
+        if ptype != PacketType::Inner {
+            break;
+        }
+    }
 
     let resp = bitsnbytes.as_slice().pread_with(0, LE)?;
 

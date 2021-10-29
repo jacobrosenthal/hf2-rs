@@ -33,7 +33,7 @@ pub fn elf_to_bin(path: PathBuf) -> Result<(Vec<u8>, u32), UtilError> {
     let mut buffer = vec![];
     file.read_to_end(&mut buffer).map_err(|_| UtilError::File)?;
 
-    let binary = goblin::elf::Elf::parse(&buffer.as_slice()).map_err(|_| UtilError::Elf)?;
+    let binary = goblin::elf::Elf::parse(buffer.as_slice()).map_err(|_| UtilError::Elf)?;
 
     let mut start_address: u64 = 0;
     let mut last_address: u64 = 0;
@@ -98,17 +98,17 @@ pub fn flash_bin(
     }
 
     if bininfo.mode != BinInfoMode::Bootloader {
-        let _ = start_flash(&d).map_err(UtilError::from)?;
+        let _ = start_flash(d).map_err(UtilError::from)?;
     }
-    flash(&binary, address, &bininfo, &d)?;
+    flash(&binary, address, bininfo, d)?;
 
-    match verify(&binary, address, &bininfo, &d) {
+    match verify(&binary, address, bininfo, d) {
         Ok(false) => return Err(UtilError::ContentsDifferent),
         Err(e) => return Err(e),
         Ok(true) => (),
     };
 
-    reset_into_app(&d).map_err(UtilError::from)
+    reset_into_app(d).map_err(UtilError::from)
 }
 
 /// Flashes binary writing a single page at a time.
@@ -121,7 +121,7 @@ fn flash(
     for (page_index, page) in binary.chunks(bininfo.flash_page_size as usize).enumerate() {
         let target_address = address + bininfo.flash_page_size * page_index as u32;
 
-        let _ = write_flash_page(&d, target_address, page.to_vec()).map_err(UtilError::from)?;
+        let _ = write_flash_page(d, target_address, page.to_vec()).map_err(UtilError::from)?;
     }
     Ok(())
 }
@@ -145,7 +145,7 @@ pub fn verify_bin(
         binary.push(0x0);
     }
 
-    match verify(&binary, address, &bininfo, &d) {
+    match verify(&binary, address, bininfo, d) {
         Ok(false) => Err(UtilError::ContentsDifferent),
         Err(e) => Err(e),
         Ok(true) => Ok(()),
@@ -178,7 +178,7 @@ fn verify(
             max_pages
         };
 
-        let chk = checksum_pages(&d, target_address, num_pages).map_err(UtilError::from)?;
+        let chk = checksum_pages(d, target_address, num_pages).map_err(UtilError::from)?;
         device_checksums.extend_from_slice(&chk.checksums);
     }
 

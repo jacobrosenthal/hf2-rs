@@ -140,8 +140,8 @@ fn exit_with_process_status(status: std::process::ExitStatus) -> ! {
 }
 
 fn parse_hex_16(input: &str) -> Result<u16, std::num::ParseIntError> {
-    if input.starts_with("0x") {
-        u16::from_str_radix(&input[2..], 16)
+    if let Some(stripped) = input.strip_prefix("0x") {
+        u16::from_str_radix(stripped, 16)
     } else {
         input.parse::<u16>()
     }
