@@ -1,6 +1,7 @@
 use colored::*;
 use hf2::utils::{elf_to_bin, flash_bin, vendor_map};
 use hidapi::{HidApi, HidDevice};
+use std::env;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::Instant;
@@ -70,12 +71,16 @@ fn main() {
         exit_with_process_status(status)
     }
 
-    let api = HidApi::new().expect("Couldn't find system usb");
-
     let d = if let (Some(v), Some(p)) = (opt.vid, opt.pid) {
+        let api = HidApi::new().expect("Couldn't find system usb");
         api.open(v, p)
             .expect("Are you sure device is plugged in and in bootloader mode?")
+    } else if let Ok(v) = env::var("TERMUX_USB_FD") {
+        let api = HidApi::new_without_enumerate().expect("Couldn't find system usb");
+        let fd = v.parse().expect("TERMUX_USB_FD must be valid number");
+        api.wrap_sys_device(fd, -1).expect("Use with termux-usb")
     } else {
+        let api = HidApi::new().expect("Couldn't find system usb");
         println!(
             "    {} for a connected device with known vid/pid pair.",
             "Searching".green().bold(),
@@ -173,4 +178,6 @@ struct Opt {
     pid: Option<u16>,
     #[structopt(name = "vid", long = "vid",  parse(try_from_str = parse_hex_16))]
     vid: Option<u16>,
+    #[structopt(short = "Z")]
+    unstable_features: Option<Vec<String>>
 }
