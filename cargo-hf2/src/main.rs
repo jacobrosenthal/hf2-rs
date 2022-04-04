@@ -173,4 +173,6 @@ struct Opt {
     pid: Option<u16>,
     #[structopt(name = "vid", long = "vid",  parse(try_from_str = parse_hex_16))]
     vid: Option<u16>,
+    #[structopt(short = "Z")]
+    unstable_features: Option<Vec<String>>
 }
